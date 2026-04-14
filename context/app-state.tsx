@@ -167,6 +167,47 @@ type BankAccountMappingRow = {
   created_at?: string | null;
 };
 
+type TransactionApiRow = {
+  id: string;
+  organization_id?: string | null;
+  organizationid?: string | null;
+  date?: string | null;
+  description?: string | null;
+  amount?: number | null;
+  is_income?: boolean | null;
+  isincome?: boolean | null;
+  accounting_type?: string | null;
+  accountingtype?: string | null;
+  subtype?: string | null;
+  invoice_reference?: string | null;
+  invoicereference?: string | null;
+  status?: string | null;
+  approval_status?: string | null;
+  approvalstatus?: string | null;
+  gst_taxable?: number | null;
+  gst_amount?: number | null;
+};
+
+type InvoiceApiRow = {
+  id: string;
+  organization_id?: string | null;
+  organizationid?: string | null;
+  invoice_no?: string | null;
+  invoiceno?: string | null;
+  party_name?: string | null;
+  partyname?: string | null;
+  type?: string | null;
+  invoice_amount?: number | null;
+  invoiceamount?: number | null;
+  paid_amount?: number | null;
+  paidamount?: number | null;
+  balance_due?: number | null;
+  balancedue?: number | null;
+  due_date?: string | null;
+  dueDate?: string | null;
+  status?: string | null;
+};
+
 async function getAccessToken() {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase.auth.getSession();
@@ -191,6 +232,107 @@ function mapBankAccountMappingRow(row: BankAccountMappingRow): BankAccountMappin
     allocationPercentage: Number(row.allocation_percentage ?? 0),
     isAutomatic: Boolean(row.is_automatic),
     createdDate: row.created_at ?? new Date().toISOString(),
+  };
+}
+
+function normalizeToken(value: unknown) {
+  return String(value ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function mapApprovalStatus(value: unknown): Transaction['approvalStatus'] {
+  const token = normalizeToken(value);
+  if (token.includes('APPROV')) return 'approved';
+  if (token.includes('REJECT')) return 'rejected';
+  return 'pending';
+}
+
+function mapTransactionStatus(value: unknown): Transaction['status'] {
+  const token = normalizeToken(value);
+  if (token === 'NEEDS_INFO') return 'Needs Info';
+  if (token === 'ACTION_REQUIRED') return 'Action Required';
+  return 'Recorded';
+}
+
+function mapAccountingType(value: unknown): Transaction['accountingType'] {
+  const token = normalizeToken(value);
+  if (token === 'EXPENSE') return 'Expense';
+  if (token === 'ASSET') return 'Asset';
+  if (token === 'LIABILITY') return 'Liability';
+  return 'Revenue';
+}
+
+function mapTransactionRow(row: TransactionApiRow): Transaction {
+  const amount = Number(row.amount ?? 0);
+  const isIncome = Boolean(row.is_income ?? row.isincome);
+  const approvalStatus = mapApprovalStatus(row.approval_status ?? row.approvalstatus);
+  const invoiceRef = String(row.invoice_reference ?? row.invoicereference ?? '').trim();
+
+  return {
+    id: row.id,
+    organizationId: String(row.organization_id ?? row.organizationid ?? ''),
+    date: String(row.date ?? '').slice(0, 10),
+    description: String(row.description ?? ''),
+    amount,
+    isIncome,
+    accountingType: mapAccountingType(row.accounting_type ?? row.accountingtype),
+    subtype: String(row.subtype ?? 'General'),
+    invoice: invoiceRef || undefined,
+    matchedInvoiceId: invoiceRef || undefined,
+    adjustment: 'Full',
+    gstSplit: {
+      taxable: Number(row.gst_taxable ?? amount),
+      gst: Number(row.gst_amount ?? 0),
+    },
+    notes: '',
+    status: mapTransactionStatus(row.status),
+    allocationStatus: invoiceRef ? 'Allocated' : 'Unallocated',
+    requiresApproval: approvalStatus !== 'approved',
+    approvalStatus,
+  };
+}
+
+function mapInvoiceStatus(value: unknown, dueDate: string, balanceDue: number): Invoice['status'] {
+  const token = normalizeToken(value);
+  if (token === 'PAID') return 'Paid';
+  if (token === 'PARTIAL' || token === 'PARTIALLY_PAID') return 'Partial';
+  if (token === 'OVERDUE') return 'Overdue';
+
+  if (balanceDue <= 0) {
+    return 'Paid';
+  }
+
+  if (dueDate) {
+    const today = new Date().toISOString().slice(0, 10);
+    if (dueDate < today) {
+      return 'Overdue';
+    }
+  }
+
+  return 'Unpaid';
+}
+
+function mapInvoiceRow(row: InvoiceApiRow): Invoice {
+  const invoiceAmount = Number(row.invoice_amount ?? row.invoiceamount ?? 0);
+  const paidAmount = Number(row.paid_amount ?? row.paidamount ?? 0);
+  const derivedBalance = Math.max(0, invoiceAmount - paidAmount);
+  const balanceDue = Number(row.balance_due ?? row.balancedue ?? derivedBalance);
+  const dueDate = String(row.due_date ?? row.dueDate ?? '').slice(0, 10);
+
+  return {
+    id: row.id,
+    organizationId: String(row.organization_id ?? row.organizationid ?? ''),
+    invoiceNo: String(row.invoice_no ?? row.invoiceno ?? ''),
+    partyName: String(row.party_name ?? row.partyname ?? ''),
+    type: normalizeToken(row.type) === 'EXPENSE' ? 'Expense' : 'Revenue',
+    invoiceAmount,
+    paidAmount,
+    balanceDue,
+    dueDate,
+    status: mapInvoiceStatus(row.status, dueDate, balanceDue),
   };
 }
 
@@ -485,6 +627,59 @@ const EMPTY_APP_STATE: AppState = {
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AppState>(EMPTY_APP_STATE);
+
+  const fetchCoreFinanceData = useCallback(async () => {
+    try {
+      const accessToken = await getAccessToken();
+      const headers: HeadersInit = {
+        Authorization: `Bearer ${accessToken}`,
+      };
+
+      const [transactionsResponse, invoicesResponse] = await Promise.all([
+        fetch('/api/transactions', { method: 'GET', cache: 'no-store', headers }),
+        fetch('/api/invoices', { method: 'GET', cache: 'no-store', headers }),
+      ]);
+
+      const nextPatch: Partial<AppState> = {};
+
+      if (transactionsResponse.ok) {
+        const txPayload = await transactionsResponse.json();
+        nextPatch.transactions = ((txPayload.transactions ?? []) as TransactionApiRow[]).map(mapTransactionRow);
+      }
+
+      if (invoicesResponse.ok) {
+        const invoicePayload = await invoicesResponse.json();
+        nextPatch.invoices = ((invoicePayload.invoices ?? []) as InvoiceApiRow[]).map(mapInvoiceRow);
+      }
+
+      if (Object.keys(nextPatch).length > 0) {
+        setState((prev) => ({
+          ...prev,
+          ...nextPatch,
+        }));
+      }
+    } catch {
+      // Keep local state as-is when API hydration is unavailable.
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchCoreFinanceData();
+
+    const refresh = () => {
+      void fetchCoreFinanceData();
+    };
+
+    window.addEventListener('finance:transactions-updated', refresh);
+    window.addEventListener('finance:invoices-updated', refresh);
+    window.addEventListener('focus', refresh);
+
+    return () => {
+      window.removeEventListener('finance:transactions-updated', refresh);
+      window.removeEventListener('finance:invoices-updated', refresh);
+      window.removeEventListener('focus', refresh);
+    };
+  }, [fetchCoreFinanceData]);
 
   const fetchBankAccountMappings = useCallback(async () => {
     try {

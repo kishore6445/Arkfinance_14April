@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import { Plus, Edit2, Trash2, AlertTriangle, TrendingUp, DollarSign, X } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { Plus, Edit2, Trash2, AlertTriangle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { getSupabaseClient } from '@/lib/supabase/client';
 
 interface Budget {
   id: string;
@@ -17,61 +18,17 @@ interface Budget {
   notes?: string;
 }
 
+async function getAccessToken(): Promise<string | null> {
+  const supabase = getSupabaseClient();
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token ?? null;
+}
+
 export function BudgetManagementScreen() {
-  const [budgets, setBudgets] = useState<Budget[]>([
-    {
-      id: 'b1',
-      category: 'Salaries & Payroll',
-      budgetAmount: 150000,
-      spentAmount: 130000,
-      period: 'Monthly',
-      alertThreshold: 80,
-      status: 'On Track',
-      lastUpdated: 'Feb 4',
-    },
-    {
-      id: 'b2',
-      category: 'Office & Operations',
-      budgetAmount: 50000,
-      spentAmount: 42500,
-      period: 'Monthly',
-      alertThreshold: 75,
-      status: 'On Track',
-      lastUpdated: 'Feb 4',
-    },
-    {
-      id: 'b3',
-      category: 'Software & SaaS',
-      budgetAmount: 25000,
-      spentAmount: 24200,
-      period: 'Monthly',
-      alertThreshold: 80,
-      status: 'Warning',
-      lastUpdated: 'Feb 4',
-      notes: 'Approaching budget limit',
-    },
-    {
-      id: 'b4',
-      category: 'Marketing',
-      budgetAmount: 30000,
-      spentAmount: 31500,
-      period: 'Monthly',
-      alertThreshold: 90,
-      status: 'Exceeded',
-      lastUpdated: 'Feb 4',
-      notes: 'Over budget by ₹1,500',
-    },
-    {
-      id: 'b5',
-      category: 'Travel',
-      budgetAmount: 20000,
-      spentAmount: 8000,
-      period: 'Monthly',
-      alertThreshold: 80,
-      status: 'On Track',
-      lastUpdated: 'Feb 4',
-    },
-  ]);
+  const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -81,50 +38,105 @@ export function BudgetManagementScreen() {
     alertThreshold: 80,
   });
 
-  const totalBudget = budgets.reduce((sum, b) => sum + b.budgetAmount, 0);
-  const totalSpent = budgets.reduce((sum, b) => sum + b.spentAmount, 0);
+  const totalBudget = budgets.reduce((sum, b) => sum + Number(b.budgetAmount || 0), 0);
+  const totalSpent = budgets.reduce((sum, b) => sum + Number(b.spentAmount || 0), 0);
   const totalRemaining = totalBudget - totalSpent;
-  const overallPercentage = Math.round((totalSpent / totalBudget) * 100);
+  const overallPercentage = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0;
 
   const warningBudgets = budgets.filter((b) => b.status !== 'On Track');
   const exceededBudgets = budgets.filter((b) => b.status === 'Exceeded');
 
-  const handleSave = () => {
+  const loadBudgets = useCallback(async () => {
+    setIsLoading(true);
+    setErrorMessage(null);
+    try {
+      const accessToken = await getAccessToken();
+      const headers: HeadersInit = accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+      const response = await fetch('/api/budgets', { method: 'GET', headers, cache: 'no-store' });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? 'Failed to load budgets');
+      }
+
+      const mappedBudgets: Budget[] = (payload.budgets ?? []).map((row: any) => {
+        const budgetAmount = Number(row.budgetAmount ?? 0);
+        const spentAmount = Number(row.spentAmount ?? 0);
+        const alertThreshold = Number(row.alertThreshold ?? 80);
+        const ratio = budgetAmount > 0 ? spentAmount / budgetAmount : 0;
+        const status: Budget['status'] = ratio >= 1 ? 'Exceeded' : ratio >= alertThreshold / 100 ? 'Warning' : 'On Track';
+
+        return {
+          id: String(row.id),
+          category: row.category ?? '',
+          budgetAmount,
+          spentAmount,
+          period: row.period === 'Quarterly' || row.period === 'Annually' ? row.period : 'Monthly',
+          alertThreshold,
+          status,
+          lastUpdated: row.lastUpdated
+            ? new Date(row.lastUpdated).toLocaleDateString('en-GB', { month: 'short', day: 'numeric' })
+            : '-',
+          notes: row.notes ?? undefined,
+        };
+      });
+
+      setBudgets(mappedBudgets);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to load budgets');
+      setBudgets([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadBudgets();
+  }, [loadBudgets]);
+
+  const handleSave = async () => {
     if (!formData.category || !formData.budgetAmount) return;
 
-    // Calculate status based on spent amount
-    const percentage = (formData.spentAmount || 0) / (formData.budgetAmount || 1);
-    let status: 'On Track' | 'Warning' | 'Exceeded' = 'On Track';
-    if (percentage >= 1) status = 'Exceeded';
-    else if (percentage >= (formData.alertThreshold || 80) / 100) status = 'Warning';
+    setIsSaving(true);
+    setErrorMessage(null);
 
-    if (editingId) {
-      setBudgets(
-        budgets.map((b) =>
-          b.id === editingId
-            ? { ...b, ...formData, status }
-            : b
-        )
-      );
+    try {
+      const accessToken = await getAccessToken();
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      };
+
+      const requestBody = {
+        ...(editingId ? { id: editingId } : {}),
+        category: formData.category,
+        budgetAmount: Number(formData.budgetAmount ?? 0),
+        spentAmount: Number(formData.spentAmount ?? 0),
+        period: formData.period ?? 'Monthly',
+        alertThreshold: Number(formData.alertThreshold ?? 80),
+        notes: formData.notes ?? '',
+      };
+
+      const response = await fetch('/api/budgets', {
+        method: editingId ? 'PATCH' : 'POST',
+        headers,
+        body: JSON.stringify(requestBody),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error ?? 'Failed to save budget');
+      }
+
+      await loadBudgets();
+      setFormData({ period: 'Monthly', alertThreshold: 80 });
+      setShowForm(false);
       setEditingId(null);
-    } else {
-      setBudgets([
-        ...budgets,
-        {
-          id: `b${Date.now()}`,
-          category: formData.category || '',
-          budgetAmount: formData.budgetAmount || 0,
-          spentAmount: formData.spentAmount || 0,
-          period: formData.period || 'Monthly',
-          alertThreshold: formData.alertThreshold || 80,
-          status,
-          lastUpdated: new Date().toLocaleDateString('en-GB', { month: 'short', day: 'numeric' }),
-        },
-      ]);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to save budget');
+    } finally {
+      setIsSaving(false);
     }
-
-    setFormData({ period: 'Monthly', alertThreshold: 80 });
-    setShowForm(false);
   };
 
   const handleEdit = (budget: Budget) => {
@@ -133,9 +145,23 @@ export function BudgetManagementScreen() {
     setShowForm(true);
   };
 
-  const handleDelete = (id: string) => {
-    setBudgets(budgets.filter((b) => b.id !== id));
-    setDeleteConfirmId(null);
+  const handleDelete = async (id: string) => {
+    setErrorMessage(null);
+    try {
+      const accessToken = await getAccessToken();
+      const headers: HeadersInit = accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+      const response = await fetch(`/api/budgets?id=${id}`, { method: 'DELETE', headers });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? 'Failed to delete budget');
+      }
+
+      setDeleteConfirmId(null);
+      await loadBudgets();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to delete budget');
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -159,6 +185,12 @@ export function BudgetManagementScreen() {
           <h1 className="text-3xl font-semibold text-foreground mb-2">Budget Management</h1>
           <p className="text-sm text-muted-foreground">Set limits and track spending by category</p>
         </div>
+
+        {errorMessage && (
+          <Card className="mb-6 border-red-300 bg-red-50 p-3 text-sm text-red-700">
+            {errorMessage}
+          </Card>
+        )}
 
         {/* Overview Cards */}
         <div className="grid grid-cols-4 gap-4 mb-8">
@@ -223,6 +255,12 @@ export function BudgetManagementScreen() {
 
         {/* Budgets Grid */}
         <div className="grid grid-cols-1 gap-4">
+          {isLoading && (
+            <Card className="p-4 text-sm text-muted-foreground">Loading budgets...</Card>
+          )}
+          {!isLoading && budgets.length === 0 && (
+            <Card className="p-4 text-sm text-muted-foreground">No budgets found. Create your first budget.</Card>
+          )}
           {budgets.map((budget) => {
             const percentage = (budget.spentAmount / budget.budgetAmount) * 100;
             const remaining = budget.budgetAmount - budget.spentAmount;
@@ -315,7 +353,7 @@ export function BudgetManagementScreen() {
           <Card className="w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-lg font-semibold text-foreground">
-                {editingId ? 'Edit Budget' : 'Create Budget'}
+                {editingId ? 'Edit Budget' : 'Create Budget_test'}
               </h2>
               <button
                 onClick={() => {
@@ -415,9 +453,9 @@ export function BudgetManagementScreen() {
               <button
                 onClick={handleSave}
                 className="px-4 py-2 bg-accent text-accent-foreground rounded hover:bg-accent/90 transition-colors text-sm font-medium disabled:opacity-50"
-                disabled={!formData.category || !formData.budgetAmount}
+                disabled={isSaving || !formData.category || !formData.budgetAmount}
               >
-                {editingId ? 'Update Budget' : 'Create Budget'}
+                {isSaving ? 'Saving...' : editingId ? 'Update Budget' : 'Create BUdet_test'}
               </button>
             </div>
           </Card>

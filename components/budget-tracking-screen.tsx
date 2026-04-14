@@ -1,9 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Plus, Edit2, Trash2, AlertTriangle, TrendingUp, Target, X, DollarSign, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { getSupabaseClient } from '@/lib/supabase/client';
+import { useOrganization } from '@/context/organization-context';
 
 interface Budget {
   id: string;
@@ -11,6 +13,7 @@ interface Budget {
   category: string;
   budgetedAmount: number;
   actualSpent: number;
+  alertThreshold: number;
   period: 'Monthly' | 'Quarterly' | 'Annually';
   startDate: string;
   endDate: string;
@@ -19,12 +22,140 @@ interface Budget {
   notes?: string;
 }
 
+async function getAccessToken(): Promise<string | null> {
+  const supabase = getSupabaseClient();
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token ?? null;
+}
+
+function deriveStatus(spent: number, budgeted: number, alertThreshold: number): Budget['status'] {
+  if (budgeted <= 0) return 'On Track';
+  const utilization = spent / budgeted;
+  if (utilization >= 1) return 'Exceeded';
+  if (utilization >= alertThreshold / 100) return 'At Risk';
+  return 'On Track';
+}
+
 export function BudgetTrackingScreen() {
+  const { currentOrganization } = useOrganization();
   const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [effectiveOrganizationId, setEffectiveOrganizationId] = useState<string | null>(null);
 
   const [showForm, setShowForm] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<Budget>>({});
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const resolveIdentity = async () => {
+      if (currentOrganization?.id && isMounted) {
+        setEffectiveOrganizationId(currentOrganization.id);
+      }
+
+      try {
+        const supabase = getSupabaseClient();
+        const { data: sessionData } = await supabase.auth.getSession();
+        const userId = sessionData.session?.user?.id ?? null;
+
+        if (!isMounted) return;
+        setCurrentUserId(userId);
+
+        if (!userId) {
+          return;
+        }
+
+        if (currentOrganization?.id) {
+          return;
+        }
+
+        const { data: profile } = await supabase
+          .from('users')
+          .select('organization_id')
+          .eq('id', userId)
+          .maybeSingle();
+
+        if (isMounted) {
+          setEffectiveOrganizationId((profile as any)?.organization_id ?? null);
+        }
+      } catch {
+        if (isMounted) {
+          setCurrentUserId(null);
+        }
+      }
+    };
+
+    void resolveIdentity();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentOrganization]);
+
+  const loadBudgets = useCallback(async () => {
+    setIsLoading(true);
+    setErrorMessage(null);
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken && (!currentUserId || !effectiveOrganizationId)) {
+        throw new Error('Missing authentication context. Please sign in again.');
+      }
+
+      const headers: HeadersInit = {
+        ...(accessToken
+          ? {
+              Authorization: `Bearer ${accessToken}`,
+              'x-access-token': accessToken,
+            }
+          : {}),
+        ...(currentUserId ? { 'x-user-id': currentUserId } : {}),
+        ...(effectiveOrganizationId ? { 'x-organization-id': effectiveOrganizationId } : {}),
+      };
+      const response = await fetch('/api/budgets', { method: 'GET', headers, cache: 'no-store' });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? 'Failed to load budgets');
+      }
+
+      const mapped: Budget[] = (payload.budgets ?? []).map((row: any) => {
+        const budgetedAmount = Number(row.budgetAmount ?? 0);
+        const actualSpent = Number(row.spentAmount ?? 0);
+        const alertThreshold = Number(row.alertThreshold ?? 80);
+        const category = String(row.category ?? '').trim();
+
+        return {
+          id: String(row.id),
+          name: category || 'Budget',
+          category: category || 'General',
+          budgetedAmount,
+          actualSpent,
+          alertThreshold,
+          period: row.period === 'Quarterly' || row.period === 'Annually' ? row.period : 'Monthly',
+          startDate: '',
+          endDate: '',
+          owner: '',
+          status: deriveStatus(actualSpent, budgetedAmount, alertThreshold),
+          notes: row.notes ?? undefined,
+        };
+      });
+
+      setBudgets(mapped);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to load budgets');
+      setBudgets([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentUserId, effectiveOrganizationId]);
+
+  useEffect(() => {
+    void loadBudgets();
+  }, [loadBudgets]);
 
   const stats = {
     totalBudget: budgets.reduce((sum, b) => sum + b.budgetedAmount, 0),
@@ -61,44 +192,102 @@ export function BudgetTrackingScreen() {
   };
 
   const getProgress = (spent: number, budgeted: number) => {
+    if (budgeted <= 0) return 0;
     return Math.min((spent / budgeted) * 100, 100);
   };
 
-  const handleSaveBudget = () => {
-    if (!formData.name || !formData.budgetedAmount) return;
+  const handleSaveBudget = async () => {
+    const category = (formData.category || formData.name || '').trim();
+    const budgetedAmount = Number(formData.budgetedAmount ?? 0);
 
-    if (selectedId) {
-      setBudgets(
-        budgets.map((b) =>
-          b.id === selectedId ? { ...b, ...formData } : b
-        )
-      );
-    } else {
-      setBudgets([
-        ...budgets,
-        {
-          id: `b${Date.now()}`,
-          name: formData.name || '',
-          category: formData.category || '',
-          budgetedAmount: formData.budgetedAmount || 0,
-          actualSpent: formData.actualSpent || 0,
-          period: formData.period || 'Monthly',
-          startDate: formData.startDate || '',
-          endDate: formData.endDate || '',
-          owner: formData.owner || '',
-          status: 'On Track',
-          notes: formData.notes,
-        },
-      ]);
+    if (!category || !Number.isFinite(budgetedAmount) || budgetedAmount <= 0) return;
+
+    setIsSaving(true);
+    setErrorMessage(null);
+
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken && (!currentUserId || !effectiveOrganizationId)) {
+        throw new Error('Missing authentication context. Please sign in again.');
+      }
+
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+        ...(accessToken
+          ? {
+              Authorization: `Bearer ${accessToken}`,
+              'x-access-token': accessToken,
+            }
+          : {}),
+        ...(currentUserId ? { 'x-user-id': currentUserId } : {}),
+        ...(effectiveOrganizationId ? { 'x-organization-id': effectiveOrganizationId } : {}),
+      };
+
+      const requestBody = {
+        ...(selectedId ? { id: selectedId } : {}),
+        ...(accessToken ? { accessToken } : {}),
+        ...(currentUserId ? { userId: currentUserId } : {}),
+        ...(effectiveOrganizationId ? { organizationId: effectiveOrganizationId } : {}),
+        category,
+        budgetAmount: budgetedAmount,
+        spentAmount: Number(formData.actualSpent ?? 0),
+        period: formData.period ?? 'Monthly',
+        alertThreshold: Number(formData.alertThreshold ?? 80),
+        notes: formData.notes ?? '',
+      };
+    //  debugger;
+
+      const response = await fetch('/api/budgets', {
+        method: selectedId ? 'PATCH' : 'POST',
+        headers,
+        body: JSON.stringify(requestBody),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error ?? 'Failed to save budget');
+      }
+
+      await loadBudgets();
+      setFormData({});
+      setSelectedId(null);
+      setShowForm(false);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to save budget');
+    } finally {
+      setIsSaving(false);
     }
-
-    setFormData({});
-    setSelectedId(null);
-    setShowForm(false);
   };
 
-  const deleteBudget = (id: string) => {
-    setBudgets(budgets.filter((b) => b.id !== id));
+  const deleteBudget = async (id: string) => {
+    setErrorMessage(null);
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken && (!currentUserId || !effectiveOrganizationId)) {
+        throw new Error('Missing authentication context. Please sign in again.');
+      }
+
+      const headers: HeadersInit = {
+        ...(accessToken
+          ? {
+              Authorization: `Bearer ${accessToken}`,
+              'x-access-token': accessToken,
+            }
+          : {}),
+        ...(currentUserId ? { 'x-user-id': currentUserId } : {}),
+        ...(effectiveOrganizationId ? { 'x-organization-id': effectiveOrganizationId } : {}),
+      };
+      const response = await fetch(`/api/budgets?id=${id}`, { method: 'DELETE', headers });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? 'Failed to delete budget');
+      }
+
+      await loadBudgets();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to delete budget');
+    }
   };
 
   return (
@@ -121,6 +310,12 @@ export function BudgetTrackingScreen() {
             </Button>
           </div>
         </div>
+
+        {errorMessage && (
+          <Card className="mb-6 border-red-300 bg-red-50 p-3 text-sm text-red-700">
+            {errorMessage}
+          </Card>
+        )}
 
         {/* Summary Stats */}
         <div className="grid grid-cols-5 gap-4 mb-8">
@@ -148,6 +343,9 @@ export function BudgetTrackingScreen() {
 
         {/* Budgets List */}
         <div className="space-y-4">
+          {isLoading && (
+            <Card className="p-4 border border-border text-sm text-muted-foreground">Loading budgets...</Card>
+          )}
           {budgets.length === 0 && (
             <Card className="p-10 border border-border text-center">
               <p className="text-sm text-muted-foreground">No budgets found. Create your first budget to start tracking.</p>
@@ -246,7 +444,7 @@ export function BudgetTrackingScreen() {
           <Card className="w-full max-w-2xl max-h-[80vh] overflow-y-auto p-8">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-semibold text-foreground">
-                {selectedId ? 'Edit Budget' : 'Create Budget'}
+                {selectedId ? 'Edit Budget' : 'Create BUdet_test'}
               </h2>
               <button
                 onClick={() => {
@@ -263,7 +461,7 @@ export function BudgetTrackingScreen() {
             <div className="space-y-4 mb-6">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-2">Budget Name *</label>
+                  <label className="block text-xs font-medium text-muted-foreground mb-2">Name *</label>
                   <input
                     type="text"
                     value={formData.name || ''}
@@ -379,8 +577,8 @@ export function BudgetTrackingScreen() {
               >
                 Cancel
               </Button>
-              <Button onClick={handleSaveBudget}>
-                {selectedId ? 'Update Budget' : 'Create Budget'}
+              <Button onClick={handleSaveBudget} disabled={isSaving || !formData.budgetedAmount || !(formData.category || formData.name)}>
+                {isSaving ? 'Saving...' : selectedId ? 'Update Budget' : 'Create BUdet_test'}
               </Button>
             </div>
           </Card>

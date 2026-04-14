@@ -34,13 +34,6 @@ type TransactionApiRow = {
   source_type?: string | null;
 };
 
-type PayrollRunApiRow = {
-  payroll_month?: string | null;
-  payroll_date?: string | null;
-  status?: string | null;
-  total_net?: number | null;
-};
-
 async function getAccessToken() {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase.auth.getSession();
@@ -62,10 +55,8 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
   const [refreshKey, setRefreshKey] = useState(0);
   const [liveBankAccounts, setLiveBankAccounts] = useState<BankAccountApiRow[]>([]);
   const [liveTransactions, setLiveTransactions] = useState<TransactionApiRow[]>([]);
-  const [livePayrollRuns, setLivePayrollRuns] = useState<PayrollRunApiRow[]>([]);
   const [bankLoaded, setBankLoaded] = useState(false);
   const [txLoaded, setTxLoaded] = useState(false);
-  const [payrollLoaded, setPayrollLoaded] = useState(false);
 
   useEffect(() => {
     const triggerRefresh = () => setRefreshKey((prev) => prev + 1);
@@ -98,10 +89,9 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
           Authorization: `Bearer ${accessToken}`,
         };
 
-        const [bankRes, txRes, payrollRes] = await Promise.all([
+        const [bankRes, txRes] = await Promise.all([
           fetch('/api/bank-accounts', { method: 'GET', cache: 'no-store', headers }),
           fetch('/api/transactions', { method: 'GET', cache: 'no-store', headers }),
-          fetch('/api/payroll-runs', { method: 'GET', cache: 'no-store', headers }),
         ]);
 
         if (bankRes.ok) {
@@ -120,13 +110,6 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
           }
         }
 
-        if (payrollRes.ok) {
-          const payrollPayload = await payrollRes.json();
-          if (isMounted) {
-            setLivePayrollRuns((payrollPayload.runs ?? []) as PayrollRunApiRow[]);
-            setPayrollLoaded(true);
-          }
-        }
       } catch {
         // Keep existing/fallback app state metrics when live fetch fails.
       }
@@ -194,43 +177,32 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
         sourceType: null as string | null,
       }));
 
-  const committedPayrollRuns = payrollLoaded
-    ? livePayrollRuns.filter((run) => ['PROCESSED', 'APPROVED'].includes((run.status ?? '').toUpperCase()))
-    : [];
-
   // Calculate metrics from live app state
   const today = new Date().toISOString().split('T')[0];
   const todayDate = new Date();
   const currentMonthKey = today.slice(0, 7);
   const todayTransactions = effectiveTransactions.filter(
-    (t) => t.date === today && (t.sourceType ?? '').toLowerCase() !== 'payroll' && isPostedCashTransaction(t)
+    (t) => t.date === today && isPostedCashTransaction(t)
   );
-  const todayPayrollOutflow = committedPayrollRuns
-    .filter((run) => (run.payroll_date ?? '').slice(0, 10) === today)
-    .reduce((sum, run) => sum + Number(run.total_net ?? 0), 0);
   const todayIncome = todayTransactions
     .filter(t => t.isIncome)
     .reduce((sum, t) => sum + t.amount, 0);
   const todayExpense = todayTransactions
     .filter(t => !t.isIncome)
-    .reduce((sum, t) => sum + t.amount, 0) + todayPayrollOutflow;
+    .reduce((sum, t) => sum + t.amount, 0);
   const todayNet = todayIncome - todayExpense;
 
   const currentMonthTransactions = effectiveTransactions.filter(
     (t) =>
       (t.date ?? '').startsWith(currentMonthKey) &&
-      (t.sourceType ?? '').toLowerCase() !== 'payroll' &&
       isPostedCashTransaction(t)
   );
-  const currentMonthPayrollOutflow = committedPayrollRuns
-    .filter((run) => (run.payroll_month ?? '').slice(0, 7) === currentMonthKey)
-    .reduce((sum, run) => sum + Number(run.total_net ?? 0), 0);
   const monthlyRevenue = currentMonthTransactions
     .filter(t => t.isIncome)
     .reduce((sum, t) => sum + t.amount, 0);
   const monthlyBurn = currentMonthTransactions
     .filter(t => !t.isIncome)
-    .reduce((sum, t) => sum + t.amount, 0) + currentMonthPayrollOutflow;
+    .reduce((sum, t) => sum + t.amount, 0);
   const monthlyNetCashFlow = monthlyRevenue - monthlyBurn;
 
   const cashBalance = effectiveBankAccounts.reduce((sum, account) => sum + Number(account.balance ?? 0), 0);

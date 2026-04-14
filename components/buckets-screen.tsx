@@ -56,8 +56,8 @@ async function getAccessToken() {
 
 export function BucketsScreen() {
   const { currentOrganization } = useOrganization();
-  const [selectedBucket, setSelectedBucket] = useState<string | null>(null);
-  const [showRulesEditor, setShowRulesEditor] = useState<string | null>(null);
+  const [selectedBucket, setSelectedBucket] = useState<Bucket | null>(null);
+  const [showRulesEditor, setShowRulesEditor] = useState<Bucket | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingBucketId, setEditingBucketId] = useState<string | null>(null);
   const [newBucketData, setNewBucketData] = useState({
@@ -301,11 +301,11 @@ export function BucketsScreen() {
   };
 
   if (selectedBucket) {
-    return <BucketDetail bucketId={selectedBucket} onBack={() => setSelectedBucket(null)} />;
+    return <BucketDetail bucket={selectedBucket} onBack={() => setSelectedBucket(null)} />;
   }
 
   if (showRulesEditor) {
-    return <BucketAllocationRules bucketId={showRulesEditor} onBack={() => setShowRulesEditor(null)} />;
+    return <BucketAllocationRules bucket={showRulesEditor} onBack={() => setShowRulesEditor(null)} />;
   }
 
   return (
@@ -364,14 +364,14 @@ export function BucketsScreen() {
 
               <div className="w-32 flex-shrink-0 flex items-center gap-2">
                 <button
-                  onClick={() => setSelectedBucket(bucket.id)}
+                  onClick={() => setSelectedBucket(bucket)}
                   className="p-1.5 text-muted-foreground hover:text-foreground transition-colors hover:bg-muted rounded"
                   title="View details"
                 >
                   <Eye size={16} />
                 </button>
                 <button
-                  onClick={() => setShowRulesEditor(bucket.id)}
+                  onClick={() => setShowRulesEditor(bucket)}
                   className="p-1.5 text-muted-foreground hover:text-foreground transition-colors hover:bg-muted rounded"
                   title="Edit allocation rules"
                 >

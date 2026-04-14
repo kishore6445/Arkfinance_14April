@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       {
         message: 'Statement parsed successfully',
         transactionCount: bankTransactions.length,
-        transactions: bankTransactions.slice(0, 10), // Return first 10 as preview
+        transactions: bankTransactions,
       },
       { status: 200 }
     );

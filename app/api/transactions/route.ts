@@ -15,6 +15,8 @@
     vendorCustomerName?: string | null
     paymentMethod?: string | null
     bankAccountId?: string | null
+    budgetId?: string | null
+    budget_id?: string | null
     invoiceId?: string | null
     status?: string
     gstAmount?: number
@@ -244,6 +246,7 @@
         const vendorCustomerName = t.vendorCustomerName ?? t.vendor_customer_name
         const paymentMethod = t.paymentMethod ?? t.payment_method
         const bankAccountId = t.bankAccountId ?? t.bank_account_id
+        const budgetId = t.budgetId ?? t.budget_id
         const cgstAmount = Number(t.cgstAmount ?? t.cgst_amount ?? 0)
         const sgstAmount = Number(t.sgstAmount ?? t.sgst_amount ?? 0)
         const igstAmount = Number(t.igstAmount ?? t.igst_amount ?? 0)
@@ -305,6 +308,7 @@
         bucket_id: bucketId ?? null,
         vendor_customer_name: vendorCustomerName ?? null,
         bank_account_id: bankAccountId ?? null,
+        budget_id: budgetId ?? null,
         assigned_bank_account_id: bankAccountId ?? null,
       status: t.status ?? 'DRAFT',
         gst_rate: gstRate,
@@ -360,7 +364,10 @@ function stripUnsupportedColumns(payload: Record<string, unknown>, errorMessage:
   maybeRemove('source_type')
   maybeRemove('source_reference_id')
   maybeRemove('assigned_bank_account_id')
+  maybeRemove('budget_id')
   maybeRemove('payment_status')
+  maybeRemove('approval_status')
+  maybeRemove('approved_by')
   maybeRemove('reconciliation_status')
   maybeRemove('bank_statement_reference')
   maybeRemove('workflow_stage')
@@ -535,6 +542,238 @@ async function selectTransactionsByOrganization(
   })
 
   return { data: merged, error }
+}
+
+type TransactionReportGroupBy =
+  | 'month'
+  | 'day'
+  | 'week'
+  | 'accountingType'
+  | 'subtype'
+  | 'status'
+  | 'paymentStatus'
+  | 'vendor'
+
+function normalizeDateOnly(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.trim()) {
+    return null
+  }
+
+  const raw = value.trim()
+  const dateOnly = raw.includes('T') ? raw.split('T')[0] : raw
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) {
+    return null
+  }
+
+  return dateOnly
+}
+
+function queryParamTruthy(value: string | null) {
+  if (!value) {
+    return false
+  }
+
+  const token = value.trim().toLowerCase()
+  return token === '1' || token === 'true' || token === 'yes'
+}
+
+function getIsoWeekKey(dateOnly: string) {
+  const date = new Date(`${dateOnly}T00:00:00Z`)
+  if (Number.isNaN(date.getTime())) {
+    return 'unknown'
+  }
+
+  const day = date.getUTCDay() || 7
+  date.setUTCDate(date.getUTCDate() + 4 - day)
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1))
+  const weekNo = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
+  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`
+}
+
+function getReportBucketKey(txn: any, groupBy: TransactionReportGroupBy) {
+  const dateOnly = normalizeDateOnly(txn.date) ?? 'unknown'
+  if (groupBy === 'day') {
+    return dateOnly
+  }
+
+  if (groupBy === 'week') {
+    return dateOnly === 'unknown' ? 'unknown' : getIsoWeekKey(dateOnly)
+  }
+
+  if (groupBy === 'accountingType') {
+    return String(txn.accounting_type ?? txn.accountingType ?? 'Uncategorized')
+  }
+
+  if (groupBy === 'subtype') {
+    return String(txn.subtype ?? 'Uncategorized')
+  }
+
+  if (groupBy === 'status') {
+    return String(txn.status ?? txn.approval_status ?? 'Unknown')
+  }
+
+  if (groupBy === 'paymentStatus') {
+    return String(txn.payment_status ?? txn.paymentStatus ?? 'Unknown')
+  }
+
+  if (groupBy === 'vendor') {
+    return String(txn.vendor_customer_name ?? txn.vendorCustomerName ?? 'Unassigned')
+  }
+
+  if (dateOnly === 'unknown') {
+    return 'unknown'
+  }
+
+  return dateOnly.slice(0, 7)
+}
+
+function buildTransactionReport(
+  transactions: any[],
+  options: {
+    startDate: string | null
+    endDate: string | null
+    groupBy: TransactionReportGroupBy
+    accountingType: string | null
+    isIncomeFilter: boolean | null
+  }
+) {
+  const { startDate, endDate, groupBy, accountingType, isIncomeFilter } = options
+
+  const filtered = transactions.filter((txn) => {
+    const txnDate = normalizeDateOnly(txn.date)
+    if (startDate && (!txnDate || txnDate < startDate)) {
+      return false
+    }
+
+    if (endDate && (!txnDate || txnDate > endDate)) {
+      return false
+    }
+
+    if (accountingType) {
+      const token = String(txn.accounting_type ?? txn.accountingType ?? '').trim().toUpperCase()
+      if (token !== accountingType) {
+        return false
+      }
+    }
+
+    if (typeof isIncomeFilter === 'boolean') {
+      const isIncome = Boolean(txn.is_income ?? txn.isIncome)
+      if (isIncome !== isIncomeFilter) {
+        return false
+      }
+    }
+
+    return true
+  })
+
+  let totalInflow = 0
+  let totalOutflow = 0
+  let amountTotal = 0
+
+  const buckets = new Map<string, { count: number; inflow: number; outflow: number; net: number }>()
+  const byAccountingType = new Map<string, { count: number; amount: number }>()
+  const byPaymentStatus = new Map<string, { count: number; amount: number }>()
+  const topTransactions = filtered
+    .map((txn) => {
+      const amount = Number(txn.amount ?? 0)
+      const isIncome = Boolean(txn.is_income ?? txn.isIncome)
+      return {
+        id: String(txn.id ?? ''),
+        date: normalizeDateOnly(txn.date) ?? String(txn.date ?? ''),
+        description: String(txn.description ?? ''),
+        accountingType: String(txn.accounting_type ?? txn.accountingType ?? 'Uncategorized'),
+        paymentStatus: String(txn.payment_status ?? txn.paymentStatus ?? 'Unknown'),
+        amount,
+        isIncome,
+      }
+    })
+    .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+    .slice(0, 10)
+
+  for (const txn of filtered) {
+    const amount = Number(txn.amount ?? 0)
+    const isIncome = Boolean(txn.is_income ?? txn.isIncome)
+    const bucketKey = getReportBucketKey(txn, groupBy)
+    const accountingTypeKey = String(txn.accounting_type ?? txn.accountingType ?? 'Uncategorized')
+    const paymentStatusKey = String(txn.payment_status ?? txn.paymentStatus ?? 'Unknown')
+
+    if (isIncome) {
+      totalInflow += amount
+    } else {
+      totalOutflow += amount
+    }
+    amountTotal += amount
+
+    const existingBucket = buckets.get(bucketKey) ?? { count: 0, inflow: 0, outflow: 0, net: 0 }
+    existingBucket.count += 1
+    if (isIncome) {
+      existingBucket.inflow += amount
+    } else {
+      existingBucket.outflow += amount
+    }
+    existingBucket.net = existingBucket.inflow - existingBucket.outflow
+    buckets.set(bucketKey, existingBucket)
+
+    const existingAccountingType = byAccountingType.get(accountingTypeKey) ?? { count: 0, amount: 0 }
+    existingAccountingType.count += 1
+    existingAccountingType.amount += amount
+    byAccountingType.set(accountingTypeKey, existingAccountingType)
+
+    const existingPaymentStatus = byPaymentStatus.get(paymentStatusKey) ?? { count: 0, amount: 0 }
+    existingPaymentStatus.count += 1
+    existingPaymentStatus.amount += amount
+    byPaymentStatus.set(paymentStatusKey, existingPaymentStatus)
+  }
+
+  const grouped = Array.from(buckets.entries())
+    .map(([key, value]) => ({
+      key,
+      count: value.count,
+      inflow: Number(value.inflow.toFixed(2)),
+      outflow: Number(value.outflow.toFixed(2)),
+      net: Number(value.net.toFixed(2)),
+    }))
+    .sort((a, b) => a.key.localeCompare(b.key))
+
+  const accountingTypeBreakdown = Array.from(byAccountingType.entries())
+    .map(([key, value]) => ({
+      key,
+      count: value.count,
+      amount: Number(value.amount.toFixed(2)),
+    }))
+    .sort((a, b) => b.amount - a.amount)
+
+  const paymentStatusBreakdown = Array.from(byPaymentStatus.entries())
+    .map(([key, value]) => ({
+      key,
+      count: value.count,
+      amount: Number(value.amount.toFixed(2)),
+    }))
+    .sort((a, b) => b.amount - a.amount)
+
+  const totalTransactions = filtered.length
+  const netCashFlow = totalInflow - totalOutflow
+
+  return {
+    filters: {
+      startDate,
+      endDate,
+      groupBy,
+      accountingType,
+      isIncome: isIncomeFilter,
+    },
+    summary: {
+      totalTransactions,
+      totalInflow: Number(totalInflow.toFixed(2)),
+      totalOutflow: Number(totalOutflow.toFixed(2)),
+      netCashFlow: Number(netCashFlow.toFixed(2)),
+      averageTransactionValue: totalTransactions > 0 ? Number((amountTotal / totalTransactions).toFixed(2)) : 0,
+    },
+    grouped,
+    accountingTypeBreakdown,
+    paymentStatusBreakdown,
+    topTransactions,
+  }
 }
 
 function hasTransactionItemFields(transaction: TransactionRequest | Record<string, unknown>) {
@@ -832,9 +1071,61 @@ function isPaymentOnlyUpdate(transaction: TransactionRequest | undefined) {
     'reconciliation_status',
     'bankStatementReference',
     'bank_statement_reference',
+    'invoice_reference',
+    'invoiceId',
+    'invoiceRef',
+    'invoice',
   ])
 
   return Object.keys(transaction).every((key) => allowedKeys.has(key))
+}
+
+function isApprovalOnlyUpdate(transaction: TransactionRequest | undefined) {
+  if (!transaction || !transaction.id) {
+    return false
+  }
+
+  const allowedKeys = new Set([
+    'id',
+    'approvalStatus',
+    'approval_status',
+    'approvedBy',
+    'approved_by',
+  ])
+
+  return Object.keys(transaction).every((key) => allowedKeys.has(key))
+}
+
+function approvalStatusCandidates(value: unknown) {
+  if (typeof value !== 'string' || !value.trim()) {
+    return []
+  }
+
+  const trimmed = value.trim()
+  const token = normalizeToken(trimmed)
+  const variants = new Set<string>([trimmed, token, token.toLowerCase()])
+
+  if (token === 'PENDING_APPROVAL') {
+    variants.add('Pending Approval')
+    variants.add('pending approval')
+  } else if (token === 'APPROVED' || token === 'APPROVED_FOR_PAYMENT') {
+    variants.add('Approved')
+    variants.add('approved')
+  } else if (token === 'REJECTED') {
+    variants.add('Rejected')
+    variants.add('rejected')
+  }
+
+  return Array.from(variants)
+}
+
+function isApprovalStatusConstraintError(message: string | undefined) {
+  if (!message) {
+    return false
+  }
+
+  const normalized = message.toLowerCase()
+  return normalized.includes('approval_status_check') || normalized.includes('transactions_approval_status_check')
 }
 
 function formatIsoDate(date: Date) {
@@ -1068,6 +1359,306 @@ async function materializeRecurringTransactions(
   }
 }
 
+async function materializePayrollTransactions(
+  admin: ReturnType<typeof getAdminClient>,
+  organizationId: string
+) {
+  const { data: payrollRuns, error: payrollRunsError } = await admin
+    .from('payroll_runs')
+    .select('id, payroll_month, payroll_date, total_net, status')
+    .eq('organization_id', organizationId)
+
+  if (payrollRunsError || !payrollRuns?.length) {
+    return
+  }
+
+  const eligibleRuns = payrollRuns.filter((row: any) => {
+    const status = String(row.status ?? '').trim().toUpperCase()
+    return (status === 'DRAFT' || status === 'PROCESSED' || status === 'APPROVED' || status === 'REJECTED') && Number(row.total_net ?? 0) > 0
+  })
+
+  if (!eligibleRuns.length) {
+    return
+  }
+
+  const markers = eligibleRuns.map((row: any) => {
+    const payrollMonthShort = typeof row.payroll_month === 'string' ? row.payroll_month.slice(0, 7) : ''
+    return `[PAYROLL:${payrollMonthShort}:${String(row.id ?? '')}]`
+  })
+
+  const salaryAccountId = await findSalaryAccountId(admin, organizationId)
+
+  const { data: existingTransactions } = await admin
+    .from('transactions')
+    .select('id, notes, amount, approval_status, payment_status, status, bank_account_id, assigned_bank_account_id')
+    .eq('organization_id', organizationId)
+    .in('notes', markers)
+
+  const eligibleRunIds = eligibleRuns
+    .map((row: any) => String(row.id ?? '').trim())
+    .filter((id: string) => id.length > 0)
+
+  const postedAmountByRunId = new Map<string, number>()
+  if (eligibleRunIds.length > 0) {
+    const { data: existingRunTransactions } = await admin
+      .from('transactions')
+      .select('source_reference_id, amount, source_type')
+      .eq('organization_id', organizationId)
+      .in('source_reference_id', eligibleRunIds)
+
+    for (const txn of existingRunTransactions ?? []) {
+      const sourceTypeToken = normalizeToken((txn as any)?.source_type)
+      if (sourceTypeToken !== 'PAYROLL') {
+        continue
+      }
+
+      const runId = String((txn as any)?.source_reference_id ?? '').trim()
+      if (!runId) {
+        continue
+      }
+
+      const amount = Number((txn as any)?.amount ?? 0)
+      postedAmountByRunId.set(runId, (postedAmountByRunId.get(runId) ?? 0) + amount)
+    }
+  }
+
+  const existingByMarker = new Map(
+    (existingTransactions ?? []).map((row: any) => [String(row.notes ?? ''), row])
+  )
+  const statusCandidates = ['Recorded', 'RECORDED', 'DRAFT', 'PENDING']
+
+  for (const row of eligibleRuns) {
+    const payrollMonthShort = typeof row.payroll_month === 'string' ? row.payroll_month.slice(0, 7) : ''
+    const payrollRunId = String(row.id ?? '')
+    const marker = `[PAYROLL:${payrollMonthShort}:${payrollRunId}]`
+    if (!payrollMonthShort) {
+      continue
+    }
+
+    const normalizedRunStatus = String(row.status ?? '').trim().toUpperCase()
+    const approvalStatus = normalizedRunStatus === 'APPROVED'
+      ? 'Approved'
+      : normalizedRunStatus === 'REJECTED'
+        ? 'Rejected'
+        : 'Pending Approval'
+    const paymentStatus = normalizedRunStatus === 'APPROVED'
+      ? 'Paid'
+      : 'Pending Payment'
+
+    const existingRow = existingByMarker.get(marker) as Record<string, unknown> | undefined
+    if (existingRow?.id) {
+      const existingAmount = Number(existingRow.amount ?? 0)
+      const nextAmount = Number(row.total_net ?? 0)
+      const postedAmount = Number(postedAmountByRunId.get(payrollRunId) ?? existingAmount)
+      const existingIsCommitted = isApprovedForCashMovement(
+        existingRow.approval_status,
+        existingRow.payment_status,
+        existingRow.status
+      )
+
+      let updatePayload: Record<string, unknown> = {
+        amount: nextAmount,
+        approval_status: approvalStatus,
+        payment_status: paymentStatus,
+        updated_at: new Date().toISOString(),
+      }
+
+      if (existingIsCommitted) {
+        const committedApprovalStatus = 'Approved'
+        const committedPaymentStatus = 'Paid'
+
+        // Never mutate committed payroll amount; append a delta transaction when payroll increases.
+        const deltaAmount = nextAmount - postedAmount
+        if (deltaAmount > 0) {
+          for (const status of statusCandidates) {
+            const adjustmentPayload: Record<string, unknown> = {
+              id: crypto.randomUUID(),
+              organization_id: organizationId,
+              date: row.payroll_date,
+              description: `Payroll Adjustment - ${payrollMonthShort}`,
+              amount: deltaAmount,
+              is_income: false,
+              accounting_type: 'Expense',
+              subtype: 'Salary',
+              notes: `[PAYROLL_ADJUSTMENT:${payrollMonthShort}:${payrollRunId}:${Date.now()}]`,
+              source_type: 'payroll',
+              source_reference_id: payrollRunId,
+              status,
+              approval_status: committedApprovalStatus,
+              payment_status: committedPaymentStatus,
+              approved_by: 'system',
+              approved_at: new Date().toISOString(),
+              ...(salaryAccountId ? { bank_account_id: salaryAccountId, assigned_bank_account_id: salaryAccountId } : {}),
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }
+
+            let insertPayload: Record<string, unknown> = adjustmentPayload
+            let { error } = await admin.from('transactions').insert(insertPayload)
+            let retryCount = 0
+
+            while (error && retryCount < 5) {
+              const nextPayload = stripUnsupportedColumns(insertPayload, error.message)
+              if (JSON.stringify(nextPayload) === JSON.stringify(insertPayload)) {
+                break
+              }
+              insertPayload = nextPayload
+              ;({ error } = await admin.from('transactions').insert(insertPayload))
+              retryCount++
+            }
+
+            if (!error) {
+              postedAmountByRunId.set(payrollRunId, postedAmount + deltaAmount)
+              break
+            }
+
+            if (!error.message.toLowerCase().includes('status')) {
+              break
+            }
+          }
+        }
+
+        updatePayload = {
+          approval_status: committedApprovalStatus,
+          payment_status: committedPaymentStatus,
+          updated_at: new Date().toISOString(),
+        }
+      } else {
+        // Keep draft/uncommitted run entries additive as well; do not overwrite base line.
+        const deltaAmount = nextAmount - postedAmount
+        if (deltaAmount > 0) {
+          for (const status of statusCandidates) {
+            const adjustmentPayload: Record<string, unknown> = {
+              id: crypto.randomUUID(),
+              organization_id: organizationId,
+              date: row.payroll_date,
+              description: `Payroll Adjustment - ${payrollMonthShort}`,
+              amount: deltaAmount,
+              is_income: false,
+              accounting_type: 'Expense',
+              subtype: 'Salary',
+              notes: `[PAYROLL_ADJUSTMENT:${payrollMonthShort}:${payrollRunId}:${Date.now()}]`,
+              source_type: 'payroll',
+              source_reference_id: payrollRunId,
+              status,
+              approval_status: approvalStatus,
+              payment_status: paymentStatus,
+              approved_by: approvalStatus === 'Approved' ? 'system' : null,
+              approved_at: approvalStatus === 'Approved' ? new Date().toISOString() : null,
+              ...(salaryAccountId ? { bank_account_id: salaryAccountId, assigned_bank_account_id: salaryAccountId } : {}),
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }
+
+            let insertPayload: Record<string, unknown> = adjustmentPayload
+            let { error } = await admin.from('transactions').insert(insertPayload)
+            let retryCount = 0
+
+            while (error && retryCount < 5) {
+              const nextPayload = stripUnsupportedColumns(insertPayload, error.message)
+              if (JSON.stringify(nextPayload) === JSON.stringify(insertPayload)) {
+                break
+              }
+              insertPayload = nextPayload
+              ;({ error } = await admin.from('transactions').insert(insertPayload))
+              retryCount++
+            }
+
+            if (!error) {
+              postedAmountByRunId.set(payrollRunId, postedAmount + deltaAmount)
+              break
+            }
+
+            if (!error.message.toLowerCase().includes('status')) {
+              break
+            }
+          }
+        }
+
+        updatePayload = {
+          approval_status: approvalStatus,
+          payment_status: paymentStatus,
+          updated_at: new Date().toISOString(),
+        }
+      }
+
+      if (!resolveTransactionBankAccountId(existingRow) && salaryAccountId) {
+        updatePayload = {
+          ...updatePayload,
+          bank_account_id: salaryAccountId,
+          assigned_bank_account_id: salaryAccountId,
+        }
+      }
+
+      let { error } = await admin.from('transactions').update(updatePayload).eq('id', String(existingRow.id))
+      let retryCount = 0
+
+      while (error && retryCount < 5) {
+        const nextPayload = stripUnsupportedColumns(updatePayload, error.message)
+        if (JSON.stringify(nextPayload) === JSON.stringify(updatePayload)) {
+          break
+        }
+        updatePayload = nextPayload
+        ;({ error } = await admin.from('transactions').update(updatePayload).eq('id', String(existingRow.id)))
+        retryCount++
+      }
+      continue
+    }
+
+    for (const status of statusCandidates) {
+      const payload: Record<string, unknown> = {
+        id: crypto.randomUUID(),
+        organization_id: organizationId,
+        date: row.payroll_date,
+        description: `Payroll - ${payrollMonthShort}`,
+        amount: Number(row.total_net ?? 0),
+        is_income: false,
+        accounting_type: 'Expense',
+        subtype: 'Salary',
+        notes: marker,
+        source_type: 'payroll',
+        source_reference_id: payrollRunId,
+        status,
+        approval_status: approvalStatus,
+        payment_status: paymentStatus,
+        approved_by: approvalStatus === 'Approved' ? 'system' : null,
+        approved_at: approvalStatus === 'Approved' ? new Date().toISOString() : null,
+        ...(salaryAccountId ? { bank_account_id: salaryAccountId, assigned_bank_account_id: salaryAccountId } : {}),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+
+      let insertPayload: Record<string, unknown> = payload
+      let { error } = await admin.from('transactions').insert(insertPayload)
+      let retryCount = 0
+
+      while (error && retryCount < 5) {
+        const nextPayload = stripUnsupportedColumns(insertPayload, error.message)
+        if (JSON.stringify(nextPayload) === JSON.stringify(insertPayload)) {
+          break
+        }
+        insertPayload = nextPayload
+        ;({ error } = await admin.from('transactions').insert(insertPayload))
+        retryCount++
+      }
+
+      if (!error) {
+        existingByMarker.set(marker, {
+          id: String(payload.id),
+          notes: marker,
+          bank_account_id: salaryAccountId,
+          assigned_bank_account_id: salaryAccountId,
+        })
+        break
+      }
+
+      if (!error.message.toLowerCase().includes('status')) {
+        break
+      }
+    }
+  }
+}
+
 function isApprovedForCashMovement(
   approvalStatus?: unknown,
   paymentStatus?: unknown,
@@ -1087,6 +1678,135 @@ function isApprovedForCashMovement(
   return approvalSatisfied && paymentSatisfied
 }
 
+function derivePayrollRunStatusFromTransaction(
+  approvalStatus?: unknown,
+  paymentStatus?: unknown,
+  transactionStatus?: unknown
+) {
+  if (isApprovedForCashMovement(approvalStatus, paymentStatus, transactionStatus)) {
+    return 'PROCESSED'
+  }
+
+  const normalizedApprovalStatus = normalizeToken(approvalStatus)
+  const normalizedTransactionStatus = normalizeToken(transactionStatus)
+
+  if (normalizedApprovalStatus === 'REJECTED') {
+    return 'REJECTED'
+  }
+
+  if (
+    normalizedApprovalStatus === 'APPROVED' ||
+    normalizedApprovalStatus === 'APPROVED_FOR_PAYMENT' ||
+    normalizedTransactionStatus === 'APPROVED'
+  ) {
+    return 'APPROVED'
+  }
+
+  return 'DRAFT'
+}
+
+function extractPayrollRunIdFromNotes(notes: unknown) {
+  if (typeof notes !== 'string') {
+    return null
+  }
+
+  const trimmed = notes.trim()
+  if (!trimmed.startsWith('[PAYROLL')) {
+    return null
+  }
+
+  const parts = trimmed.replace(/^\[/, '').replace(/\]$/, '').split(':')
+  if (parts.length < 3) {
+    return null
+  }
+
+  const runId = String(parts[2] ?? '').trim()
+  return runId.length > 0 ? runId : null
+}
+
+async function syncPayrollRunStatusFromTransaction(
+  admin: ReturnType<typeof getAdminClient>,
+  organizationId: string,
+  transactionRow: Record<string, unknown> | null | undefined
+) {
+  if (!transactionRow) {
+    return
+  }
+
+  const sourceTypeToken = normalizeToken(transactionRow.source_type ?? transactionRow.sourceType)
+  const sourceReferenceId = String(
+    transactionRow.source_reference_id ?? transactionRow.sourceReferenceId ?? ''
+  ).trim()
+  const notesRunId = extractPayrollRunIdFromNotes(transactionRow.notes)
+  const payrollRunId = sourceReferenceId || notesRunId
+
+  if (!payrollRunId) {
+    return
+  }
+
+  const looksPayroll =
+    sourceTypeToken === 'PAYROLL' ||
+    (typeof transactionRow.notes === 'string' && transactionRow.notes.trim().startsWith('[PAYROLL'))
+
+  if (!looksPayroll) {
+    return
+  }
+
+  const nextStatus = derivePayrollRunStatusFromTransaction(
+    transactionRow.approval_status,
+    transactionRow.payment_status,
+    transactionRow.status
+  )
+
+  const { data: existingRun } = await admin
+    .from('payroll_runs')
+    .select('id, status, approval_date, processed_date, paid_date')
+    .eq('id', payrollRunId)
+    .eq('organization_id', organizationId)
+    .maybeSingle<{
+      id: string
+      status?: string | null
+      approval_date?: string | null
+      processed_date?: string | null
+      paid_date?: string | null
+    }>()
+
+  if (!existingRun?.id) {
+    return
+  }
+
+  const currentStatus = normalizeToken(existingRun.status)
+  const targetStatus = normalizeToken(nextStatus)
+  const now = new Date().toISOString().slice(0, 10)
+  const updatePayload: Record<string, unknown> = {
+    status: nextStatus,
+    updated_at: new Date().toISOString(),
+  }
+
+  if ((targetStatus === 'APPROVED' || targetStatus === 'PROCESSED') && !existingRun.approval_date) {
+    updatePayload.approval_date = now
+  }
+  if (targetStatus === 'PROCESSED' && !existingRun.processed_date) {
+    updatePayload.processed_date = now
+  }
+  if (targetStatus === 'PROCESSED' && !existingRun.paid_date) {
+    updatePayload.paid_date = now
+  }
+
+  if (
+    currentStatus !== targetStatus ||
+    Object.prototype.hasOwnProperty.call(updatePayload, 'approval_date') ||
+    Object.prototype.hasOwnProperty.call(updatePayload, 'processed_date') ||
+    Object.prototype.hasOwnProperty.call(updatePayload, 'paid_date')
+  ) {
+    await admin
+      .from('payroll_runs')
+      .update(updatePayload)
+      .eq('id', existingRun.id)
+      .eq('organization_id', organizationId)
+  }
+}
+
 function calculateCashEffect(amount: unknown, isIncome: unknown) {
   const normalizedAmount = Number(amount ?? 0)
   if (!Number.isFinite(normalizedAmount) || normalizedAmount === 0) {
@@ -1094,6 +1814,375 @@ function calculateCashEffect(amount: unknown, isIncome: unknown) {
   }
 
   return Boolean(isIncome) ? normalizedAmount : -normalizedAmount
+}
+
+function resolveTransactionBankAccountId(row: Record<string, unknown> | null | undefined) {
+  if (!row) {
+    return null
+  }
+
+  const value =
+    row.bank_account_id ??
+    row.assigned_bank_account_id ??
+    row.bankAccountId ??
+    row.assignedBankAccountId ??
+    null
+
+  const normalized = String(value ?? '').trim()
+  return normalized.length > 0 ? normalized : null
+}
+
+async function findSalaryAccountId(
+  admin: ReturnType<typeof getAdminClient>,
+  organizationId: string
+) {
+  const { data, error } = await admin
+    .from('bank_accounts')
+    .select('id, account_name, is_primary, status')
+    .eq('organization_id', organizationId)
+
+  if (error) {
+    return null
+  }
+
+  const accounts = (data ?? []) as Array<{
+    id: string
+    account_name?: string | null
+    is_primary?: boolean | null
+    status?: string | null
+  }>
+  const activeAccounts = accounts.filter((account) => (account.status ?? 'Active') === 'Active')
+
+  const salaryAccount = activeAccounts.find((account) =>
+    String(account.account_name ?? '').toLowerCase().includes('salary')
+  )
+
+  if (salaryAccount?.id) {
+    return salaryAccount.id
+  }
+
+  return activeAccounts.find((account) => Boolean(account.is_primary))?.id ?? null
+}
+
+function calculateBudgetExpenseImpact(amount: unknown, accountingType: unknown) {
+  const normalizedAmount = Number(amount ?? 0)
+  if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
+    return 0
+  }
+
+  return normalizeUpper(accountingType) === 'EXPENSE' ? normalizedAmount : 0
+}
+
+type BudgetMatch = {
+  id: string
+  category: string
+  normalizedCategory: string
+}
+
+type BucketMatch = {
+  id: string
+  name: string
+  normalizedName: string
+}
+
+function normalizeBudgetText(value: unknown) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+}
+
+function buildBudgetMatchRows(rows: any[]) {
+  return (rows ?? [])
+    .map((row) => {
+      const category =
+        String(row?.category ?? row?.budget_name ?? row?.coa_name ?? row?.coaName ?? '').trim() || 'Budget'
+      const normalizedCategory = normalizeBudgetText(category)
+      return {
+        id: String(row?.id ?? ''),
+        category,
+        normalizedCategory,
+      } as BudgetMatch
+    })
+    .filter((row) => row.id.length > 0)
+}
+
+function isPayrollExpenseHint(subtype: unknown, description: unknown) {
+  const combined = normalizeBudgetText(`${String(subtype ?? '')} ${String(description ?? '')}`)
+  return (
+    combined.includes('payroll') ||
+    combined.includes('salary') ||
+    combined.includes('wage') ||
+    combined.includes('wages')
+  )
+}
+
+function pickBudgetForExpense(budgets: BudgetMatch[], subtype: unknown, description: unknown) {
+  if (!budgets.length) {
+    return null
+  }
+
+  const subtypeText = normalizeBudgetText(subtype)
+  const descriptionText = normalizeBudgetText(description)
+  const combined = `${subtypeText} ${descriptionText}`.trim()
+
+  const payrollBudget = budgets.find((budget) => budget.normalizedCategory.includes('payroll'))
+  if (payrollBudget && isPayrollExpenseHint(subtype, description)) {
+    return payrollBudget
+  }
+
+  if (subtypeText) {
+    const exactSubtypeMatch = budgets.find((budget) => budget.normalizedCategory === subtypeText)
+    if (exactSubtypeMatch) {
+      return exactSubtypeMatch
+    }
+
+    const containsSubtypeMatch = budgets.find(
+      (budget) =>
+        budget.normalizedCategory.includes(subtypeText) ||
+        subtypeText.includes(budget.normalizedCategory)
+    )
+    if (containsSubtypeMatch) {
+      return containsSubtypeMatch
+    }
+  }
+
+  const descriptionMatch = budgets.find(
+    (budget) => budget.normalizedCategory.length > 2 && combined.includes(budget.normalizedCategory)
+  )
+  if (descriptionMatch) {
+    return descriptionMatch
+  }
+
+  return null
+}
+
+async function fetchBudgetMatches(admin: ReturnType<typeof getAdminClient>, organizationId: string) {
+  const { data, error } = await admin
+    .from('budgets')
+    .select('*')
+    .eq('organization_id', organizationId)
+
+  if (error || !data?.length) {
+    return [] as BudgetMatch[]
+  }
+
+  return buildBudgetMatchRows(data)
+}
+
+async function fetchBucketMatches(admin: ReturnType<typeof getAdminClient>, organizationId: string) {
+  const { data, error } = await admin
+    .from('buckets')
+    .select('id, name')
+    .eq('organization_id', organizationId)
+
+  if (error || !data?.length) {
+    return [] as BucketMatch[]
+  }
+
+  return (data ?? [])
+    .map((row: any) => {
+      const name = String(row?.name ?? '').trim()
+      return {
+        id: String(row?.id ?? ''),
+        name,
+        normalizedName: normalizeBudgetText(name),
+      } as BucketMatch
+    })
+    .filter((row) => row.id.length > 0)
+}
+
+function pickBudgetByBucketId(
+  budgets: BudgetMatch[],
+  buckets: BucketMatch[],
+  bucketId: string | null | undefined
+) {
+  if (!bucketId) {
+    return null
+  }
+
+  const bucket = buckets.find((row) => row.id === bucketId)
+  if (!bucket || !bucket.normalizedName) {
+    return null
+  }
+
+  const exact = budgets.find((budget) => budget.normalizedCategory === bucket.normalizedName)
+  if (exact) {
+    return exact
+  }
+
+  return budgets.find(
+    (budget) =>
+      budget.normalizedCategory.includes(bucket.normalizedName) ||
+      bucket.normalizedName.includes(budget.normalizedCategory)
+  )
+}
+
+async function resolveExpenseBudgetId(
+  admin: ReturnType<typeof getAdminClient>,
+  organizationId: string,
+  subtype: unknown,
+  description: unknown,
+  bucketId?: string | null,
+  preloadedBudgets?: BudgetMatch[],
+  preloadedBuckets?: BucketMatch[]
+) {
+  const budgets = preloadedBudgets ?? (await fetchBudgetMatches(admin, organizationId))
+  const buckets = preloadedBuckets ?? (await fetchBucketMatches(admin, organizationId))
+
+  const bucketMapped = pickBudgetByBucketId(budgets, buckets, bucketId)
+  if (bucketMapped) {
+    return bucketMapped.id
+  }
+
+  const matched = pickBudgetForExpense(budgets, subtype, description)
+  return matched?.id ?? null
+}
+
+async function autoAssignMissingExpenseBudgets(
+  admin: ReturnType<typeof getAdminClient>,
+  organizationId: string
+) {
+  const budgets = await fetchBudgetMatches(admin, organizationId)
+  const buckets = await fetchBucketMatches(admin, organizationId)
+  if (!budgets.length) {
+    return
+  }
+
+  const { data: expenseTransactions, error } = await admin
+    .from('transactions')
+    .select('id, date, amount, subtype, description, bucket_id, accounting_type, budget_id')
+    .eq('organization_id', organizationId)
+    .eq('is_income', false)
+    .is('budget_id', null)
+
+  if (error || !expenseTransactions?.length) {
+    return
+  }
+
+  for (const txn of expenseTransactions) {
+    const accountingType = normalizeUpper((txn as any)?.accounting_type)
+    if (accountingType && accountingType !== 'EXPENSE') {
+      continue
+    }
+
+    const matchedBudgetId = await resolveExpenseBudgetId(
+      admin,
+      organizationId,
+      (txn as any)?.subtype,
+      (txn as any)?.description,
+      String((txn as any)?.bucket_id ?? '') || null,
+      budgets,
+      buckets
+    )
+
+    if (!matchedBudgetId) {
+      continue
+    }
+
+    await admin
+      .from('transactions')
+      .update({ budget_id: matchedBudgetId })
+      .eq('id', String((txn as any)?.id ?? ''))
+      .eq('organization_id', organizationId)
+
+    const impact = calculateBudgetExpenseImpact((txn as any)?.amount, (txn as any)?.accounting_type)
+    if (impact > 0) {
+      await applyBudgetTrackingDelta(
+        admin,
+        organizationId,
+        matchedBudgetId,
+        String((txn as any)?.date ?? ''),
+        impact
+      )
+    }
+  }
+}
+
+function getTrackingMonthFromDate(dateValue: string | null | undefined) {
+  const parsed = parseIsoDate(dateValue)
+  const sourceDate = parsed ?? new Date()
+  return `${sourceDate.getUTCFullYear()}-${String(sourceDate.getUTCMonth() + 1).padStart(2, '0')}-01`
+}
+
+function deriveBudgetTrackingStatus(actualAmount: number, budgetedAmount: number) {
+  if (budgetedAmount <= 0) return 'ON_TRACK'
+  const utilization = actualAmount / budgetedAmount
+  if (utilization >= 1) return 'OVERSPENT'
+  if (utilization >= 0.8) return 'WARNING'
+  return 'ON_TRACK'
+}
+
+async function applyBudgetTrackingDelta(
+  admin: ReturnType<typeof getAdminClient>,
+  organizationId: string,
+  budgetId: string | null | undefined,
+  transactionDate: string | null | undefined,
+  deltaAmount: number
+) {
+  if (!budgetId || !Number.isFinite(deltaAmount) || deltaAmount === 0) {
+    return
+  }
+
+  try {
+    const trackingMonth = getTrackingMonthFromDate(transactionDate)
+
+    const { data: existingTracking, error: existingTrackingError } = await admin
+      .from('budget_tracking')
+      .select('budgeted_amount, actual_amount, reserved_amount')
+      .eq('organization_id', organizationId)
+      .eq('budget_id', budgetId)
+      .eq('tracking_month', trackingMonth)
+      .maybeSingle()
+
+    if (existingTrackingError) {
+      console.warn('[Transactions API] budget tracking fetch skipped:', existingTrackingError.message)
+      return
+    }
+
+    let budgetedAmount = Number((existingTracking as any)?.budgeted_amount ?? 0)
+    if (!existingTracking) {
+      const { data: budgetRow } = await admin
+        .from('budgets')
+        .select('budget_amount')
+        .eq('id', budgetId)
+        .eq('organization_id', organizationId)
+        .maybeSingle()
+
+      budgetedAmount = Number((budgetRow as any)?.budget_amount ?? 0)
+    }
+
+    const currentActualAmount = Number((existingTracking as any)?.actual_amount ?? 0)
+    const reservedAmount = Number((existingTracking as any)?.reserved_amount ?? 0)
+    const nextActualAmount = Math.max(0, currentActualAmount + deltaAmount)
+    const varianceAmount = budgetedAmount - nextActualAmount
+    const variancePercent =
+      budgetedAmount > 0 ? Number(((varianceAmount / budgetedAmount) * 100).toFixed(2)) : 0
+
+    const trackingPayload = {
+      budget_id: budgetId,
+      organization_id: organizationId,
+      tracking_month: trackingMonth,
+      budgeted_amount: budgetedAmount,
+      actual_amount: nextActualAmount,
+      reserved_amount: reservedAmount,
+      variance_amount: varianceAmount,
+      variance_percent: variancePercent,
+      status: deriveBudgetTrackingStatus(nextActualAmount, budgetedAmount),
+      updated_at: new Date().toISOString(),
+    }
+
+    const { error: upsertError } = await admin
+      .from('budget_tracking')
+      .upsert(trackingPayload, { onConflict: 'budget_id,tracking_month' })
+
+    if (upsertError) {
+      console.warn('[Transactions API] budget tracking upsert skipped:', upsertError.message)
+    }
+  } catch (error) {
+    console.warn('[Transactions API] budget tracking update skipped:', error)
+  }
 }
   //   const errors: string[] = []
   //   for (const query of variants) {
@@ -1126,9 +2215,65 @@ function calculateCashEffect(amount: unknown, isIncome: unknown) {
         console.error('[Transactions API] Recurring materialization failed:', materializeError)
       }
 
+      try {
+        await materializePayrollTransactions(admin, organizationId)
+      } catch (materializeError) {
+        console.error('[Transactions API] Payroll materialization failed:', materializeError)
+      }
+
+      try {
+        await autoAssignMissingExpenseBudgets(admin, organizationId)
+      } catch (autoAssignError) {
+        console.error('[Transactions API] Expense budget auto-assignment failed:', autoAssignError)
+      }
+
       const { data, error } = await selectTransactionsByOrganization(admin, organizationId)
       if (error) {
         return NextResponse.json({ error: `Failed to fetch transactions: ${error.message}` }, { status: 400 })
+      }
+
+      const url = new URL(request.url)
+      const reportMode =
+        queryParamTruthy(url.searchParams.get('report')) ||
+        String(url.searchParams.get('mode') ?? '').trim().toLowerCase() === 'report'
+
+      if (reportMode) {
+        const requestedGroupBy = String(url.searchParams.get('groupBy') ?? 'month').trim() as TransactionReportGroupBy
+        const allowedGroupBy: TransactionReportGroupBy[] = [
+          'month',
+          'day',
+          'week',
+          'accountingType',
+          'subtype',
+          'status',
+          'paymentStatus',
+          'vendor',
+        ]
+        const groupBy = allowedGroupBy.includes(requestedGroupBy) ? requestedGroupBy : 'month'
+
+        const startDate = normalizeDateOnly(url.searchParams.get('startDate'))
+        const endDate = normalizeDateOnly(url.searchParams.get('endDate'))
+        const accountingTypeRaw = url.searchParams.get('accountingType')
+        const accountingType = accountingTypeRaw ? accountingTypeRaw.trim().toUpperCase() : null
+        const isIncomeRaw = url.searchParams.get('isIncome')
+        const isIncomeFilter =
+          isIncomeRaw === null
+            ? null
+            : isIncomeRaw.trim().toLowerCase() === 'true'
+              ? true
+              : isIncomeRaw.trim().toLowerCase() === 'false'
+                ? false
+                : null
+
+        const report = buildTransactionReport(data ?? [], {
+          startDate,
+          endDate,
+          groupBy,
+          accountingType,
+          isIncomeFilter,
+        })
+
+        return NextResponse.json({ report }, { status: 200 })
       }
 
       return NextResponse.json({ transactions: data }, { status: 200 })
@@ -1326,13 +2471,36 @@ function calculateCashEffect(amount: unknown, isIncome: unknown) {
         normalizedTransaction?.reconciliationStatus ?? normalizedTransaction?.reconciliation_status
       const incomingBankStatementReference =
         normalizedTransaction?.bankStatementReference ?? normalizedTransaction?.bank_statement_reference
-      const bankAccountId = normalizedTransaction?.bankAccountId ?? normalizedTransaction?.bank_account_id ?? null
+      const bankAccountId =
+        normalizedTransaction?.bankAccountId ??
+        normalizedTransaction?.assignedBankAccountId ??
+        normalizedTransaction?.bank_account_id ??
+        normalizedTransaction?.assigned_bank_account_id ??
+        null
+      let resolvedBudgetId = normalizedTransaction?.budgetId ?? normalizedTransaction?.budget_id ?? null
       const isIncome = normalizedTransaction?.isIncome ?? normalizedTransaction?.is_income
       const incomingApprovalStatus = normalizedTransaction?.approvalStatus ?? normalizedTransaction?.approval_status
 
       const organizationId = profile.organization_id
       if (!organizationId) {
         return NextResponse.json({ error: 'No organization linked to this user' }, { status: 400 })
+      }
+
+      const normalizedAccountingType = normalizeUpper(
+        normalizedTransaction?.accountingType ?? normalizedTransaction?.accounting_type
+      )
+
+      if (!resolvedBudgetId && normalizedAccountingType === 'EXPENSE') {
+        resolvedBudgetId = await resolveExpenseBudgetId(
+          admin,
+          organizationId,
+          normalizedTransaction?.subtype,
+          normalizedTransaction?.description,
+          normalizedTransaction?.bucketId ?? normalizedTransaction?.bucket_id
+        )
+        if (resolvedBudgetId) {
+          normalizedTransaction.budget_id = resolvedBudgetId
+        }
       }
 
       // Status-only fast path for inline dropdown updates.
@@ -1350,7 +2518,7 @@ function calculateCashEffect(amount: unknown, isIncome: unknown) {
 
         const { data: oldTxn } = await admin
           .from('transactions')
-          .select('amount, is_income, bank_account_id, approval_status, payment_status, status, invoice_reference, invoice_id')
+          .select('amount, is_income, bank_account_id, assigned_bank_account_id, approval_status, payment_status, status, source_type, invoice_reference, invoice_id, invoicereference, invoiceid')
           .eq('id', transaction.id)
           .eq('organization_id', organizationId)
           .maybeSingle()
@@ -1395,10 +2563,16 @@ function calculateCashEffect(amount: unknown, isIncome: unknown) {
 
         const invoiceId =
           transaction.invoiceId ??
+          (transaction as any).invoice ??
+          (transaction as any).invoice_reference ??
           normalizedTransaction?.invoice_id ??
           normalizedTransaction?.invoice_reference ??
+          normalizedTransaction?.invoiceId ??
+          normalizedTransaction?.invoice ??
           oldTxn?.invoice_reference ??
-          oldTxn?.invoice_id
+          (oldTxn as any)?.invoicereference ??
+          oldTxn?.invoice_id ??
+          (oldTxn as any)?.invoiceid
         await updateInvoiceStatusIfPaid(admin, organizationId, invoiceId, usedStatusValue)
 
         const oldPosted = isApprovedForCashMovement(
@@ -1414,12 +2588,146 @@ function calculateCashEffect(amount: unknown, isIncome: unknown) {
         const oldEffect = oldPosted ? calculateCashEffect(oldTxn?.amount, oldTxn?.is_income) : 0
         const newEffect = newPosted ? calculateCashEffect(updatedData?.amount, updatedData?.is_income) : 0
 
-        if (oldTxn?.bank_account_id) {
-          const delta = newEffect - oldEffect
-          if (delta !== 0) {
-            await adjustBankAccountBalance(admin, oldTxn.bank_account_id, delta)
+        const oldAccountId = resolveTransactionBankAccountId(oldTxn as Record<string, unknown>)
+        let newAccountId = resolveTransactionBankAccountId(updatedData as Record<string, unknown>) ?? oldAccountId
+
+        const payrollSourceToken = normalizeToken(updatedData?.source_type ?? oldTxn?.source_type)
+        if (!newAccountId && payrollSourceToken === 'PAYROLL') {
+          const salaryAccountId = await findSalaryAccountId(admin, organizationId)
+          if (salaryAccountId) {
+            newAccountId = salaryAccountId
+            await admin
+              .from('transactions')
+              .update({ bank_account_id: salaryAccountId, assigned_bank_account_id: salaryAccountId })
+              .eq('id', transaction.id)
+              .eq('organization_id', organizationId)
           }
         }
+
+        if (oldAccountId && oldAccountId === newAccountId) {
+          const delta = newEffect - oldEffect
+          if (delta !== 0) {
+            await adjustBankAccountBalance(admin, oldAccountId, delta)
+          }
+        } else {
+          if (oldAccountId && oldEffect !== 0) {
+            await adjustBankAccountBalance(admin, oldAccountId, -oldEffect)
+          }
+          if (newAccountId && newEffect !== 0) {
+            await adjustBankAccountBalance(admin, newAccountId, newEffect)
+          }
+        }
+
+        await syncPayrollRunStatusFromTransaction(
+          admin,
+          organizationId,
+          updatedData as Record<string, unknown>
+        )
+
+        return NextResponse.json({ transaction: updatedData }, { status: 200 })
+      }
+
+      // Approval-only fast path for inline dropdown updates.
+      if (transaction?.id && incomingApprovalStatus !== undefined && isApprovalOnlyUpdate(transaction)) {
+        if (!isAccountantRole(profile.role)) {
+          return NextResponse.json({ error: 'Only Accountant users can edit transactions' }, { status: 403 })
+        }
+
+        const candidates = approvalStatusCandidates(incomingApprovalStatus)
+        let updatedData: any = null
+        let lastError: { message: string } | null = null
+        let usedApprovalValue = String(incomingApprovalStatus)
+
+        const approvedByValue =
+          (transaction.approvedBy ?? transaction.approved_by ?? profile.id ?? null) as string | null
+
+        const { data: oldTxn } = await admin
+          .from('transactions')
+          .select('amount, is_income, bank_account_id, assigned_bank_account_id, approval_status, payment_status, status, source_type')
+          .eq('id', transaction.id)
+          .eq('organization_id', organizationId)
+          .maybeSingle()
+
+        for (const candidate of candidates) {
+          const statusToken = normalizeToken(candidate)
+          const approvalOnlyPayload: Record<string, unknown> = {
+            approval_status: candidate,
+            approved_by: statusToken === 'APPROVED' || statusToken === 'APPROVED_FOR_PAYMENT' ? approvedByValue : null,
+          }
+
+          const { data, error } = await admin
+            .from('transactions')
+            .update(approvalOnlyPayload)
+            .eq('id', transaction.id)
+            .eq('organization_id', organizationId)
+            .select('*')
+            .single()
+
+          if (!error) {
+            updatedData = data
+            usedApprovalValue = candidate
+            lastError = null
+            break
+          }
+
+          lastError = error
+          if (!isApprovalStatusConstraintError(error.message)) {
+            break
+          }
+        }
+
+        if (lastError || !updatedData) {
+          return NextResponse.json({ error: `Unable to update approval status: ${lastError?.message ?? 'Unknown error'}` }, { status: 400 })
+        }
+
+        const oldPosted = isApprovedForCashMovement(
+          oldTxn?.approval_status,
+          oldTxn?.payment_status,
+          oldTxn?.status
+        )
+        const newPosted = isApprovedForCashMovement(
+          usedApprovalValue,
+          updatedData?.payment_status,
+          updatedData?.status
+        )
+        const oldEffect = oldPosted ? calculateCashEffect(oldTxn?.amount, oldTxn?.is_income) : 0
+        const newEffect = newPosted ? calculateCashEffect(updatedData?.amount, updatedData?.is_income) : 0
+
+        const oldAccountId = resolveTransactionBankAccountId(oldTxn as Record<string, unknown>)
+        let newAccountId = resolveTransactionBankAccountId(updatedData as Record<string, unknown>) ?? oldAccountId
+
+        const payrollSourceToken = normalizeToken(updatedData?.source_type ?? oldTxn?.source_type)
+        if (!newAccountId && payrollSourceToken === 'PAYROLL') {
+          const salaryAccountId = await findSalaryAccountId(admin, organizationId)
+          if (salaryAccountId) {
+            newAccountId = salaryAccountId
+            await admin
+              .from('transactions')
+              .update({ bank_account_id: salaryAccountId, assigned_bank_account_id: salaryAccountId })
+              .eq('id', transaction.id)
+              .eq('organization_id', organizationId)
+          }
+        }
+
+        if (oldAccountId && oldAccountId === newAccountId) {
+          const delta = newEffect - oldEffect
+          if (delta !== 0) {
+            await adjustBankAccountBalance(admin, oldAccountId, delta)
+          }
+        } else {
+          if (oldAccountId && oldEffect !== 0) {
+            await adjustBankAccountBalance(admin, oldAccountId, -oldEffect)
+          }
+          if (newAccountId && newEffect !== 0) {
+            await adjustBankAccountBalance(admin, newAccountId, newEffect)
+          }
+        }
+
+        await syncPayrollRunStatusFromTransaction(
+          admin,
+          organizationId,
+          updatedData as Record<string, unknown>
+        )
 
         return NextResponse.json({ transaction: updatedData }, { status: 200 })
       }
@@ -1439,7 +2747,7 @@ function calculateCashEffect(amount: unknown, isIncome: unknown) {
         // Fetch the old transaction so we can reverse its effect on the bank balance
         const { data: oldTxn } = await admin
           .from('transactions')
-          .select('amount, is_income, bank_account_id, approval_status, payment_status, status')
+          .select('amount, is_income, accounting_type, date, budget_id, bank_account_id, assigned_bank_account_id, approval_status, payment_status, status')
           .eq('id', transaction.id)
           .maybeSingle()
 
@@ -1495,12 +2803,36 @@ function calculateCashEffect(amount: unknown, isIncome: unknown) {
           }
         }
 
+        const oldBudgetId = String((oldTxn as any)?.budget_id ?? '') || null
+        const oldBudgetImpact = calculateBudgetExpenseImpact((oldTxn as any)?.amount, (oldTxn as any)?.accounting_type)
+        const newBudgetImpact = calculateBudgetExpenseImpact(transaction.amount, normalizedTransaction?.accountingType ?? normalizedTransaction?.accounting_type)
+        const newBudgetId = resolvedBudgetId
+
+        if (oldBudgetId && oldBudgetId === newBudgetId) {
+          const delta = newBudgetImpact - oldBudgetImpact
+          await applyBudgetTrackingDelta(admin, organizationId, newBudgetId, transaction.date, delta)
+        } else {
+          if (oldBudgetId && oldBudgetImpact > 0) {
+            await applyBudgetTrackingDelta(admin, organizationId, oldBudgetId, (oldTxn as any)?.date, -oldBudgetImpact)
+          }
+          if (newBudgetId && newBudgetImpact > 0) {
+            await applyBudgetTrackingDelta(admin, organizationId, newBudgetId, transaction.date, newBudgetImpact)
+          }
+        }
+
         // Update invoice status to 'Paid' if transaction payment status is updated to 'Paid'
-        const invoiceId = transaction.invoiceId ?? normalizedTransaction?.invoice_id ?? normalizedTransaction?.invoice_reference
+        const invoiceId =
+          transaction.invoiceId ??
+          (transaction as any).invoice ??
+          (transaction as any).invoice_reference ??
+          normalizedTransaction?.invoice_id ??
+          normalizedTransaction?.invoice_reference ??
+          normalizedTransaction?.invoiceId ??
+          normalizedTransaction?.invoice
         await updateInvoiceStatusIfPaid(admin, organizationId, invoiceId, transaction.paymentStatus ?? normalizedTransaction?.payment_status)
 
         // Cash movement happens only after approval, not at draft/edit stage.
-        const oldAccountId = oldTxn?.bank_account_id ?? null
+        const oldAccountId = resolveTransactionBankAccountId(oldTxn as Record<string, unknown>)
         const newAccountId = bankAccountId ?? normalizedTransaction?.bankAccountId ?? normalizedTransaction?.bank_account_id ?? oldAccountId
         const effectiveApprovalStatus = incomingApprovalStatus ?? oldTxn?.approval_status
         const effectivePaymentStatus = incomingPaymentStatus ?? oldTxn?.payment_status
@@ -1525,10 +2857,29 @@ function calculateCashEffect(amount: unknown, isIncome: unknown) {
           }
         }
 
+        await syncPayrollRunStatusFromTransaction(
+          admin,
+          organizationId,
+          data as Record<string, unknown>
+        )
+
         return NextResponse.json({ transaction: data }, { status: 200 })
       }
 
       // INSERT new transaction
+      // Only Accountants/Admins can create a transaction already in Approved or Paid state
+      const committingApproval = normalizeRoleToken(incomingApprovalStatus) === 'APPROVED'
+      const committingPayment = normalizeRoleToken(incomingPaymentStatus) === 'PAID'
+      if ((committingApproval || committingPayment) && !isAccountantRole(profile.role)) {
+        const allowedAdminRoles = ['ORG_ADMIN', 'SUPER_ADMIN']
+        if (!allowedAdminRoles.includes(normalizeRoleToken(profile.role))) {
+          return NextResponse.json(
+            { error: 'Only Accountant users can approve or mark transactions as paid' },
+            { status: 403 }
+          )
+        }
+      }
+
       const resolvedId = crypto.randomUUID()
       const payload = buildTransactionPayload(transaction, organizationId, resolvedId)
       let { data, error } = await admin
@@ -1580,8 +2931,20 @@ function calculateCashEffect(amount: unknown, isIncome: unknown) {
         }
       }
 
+      const newBudgetImpact = calculateBudgetExpenseImpact(transaction.amount, normalizedTransaction?.accountingType ?? normalizedTransaction?.accounting_type)
+      if (resolvedBudgetId && newBudgetImpact > 0) {
+        await applyBudgetTrackingDelta(admin, organizationId, resolvedBudgetId, transaction.date, newBudgetImpact)
+      }
+
       // Update invoice status to 'Paid' if transaction payment status is set to 'Paid'
-      const invoiceId = transaction.invoiceId ?? normalizedTransaction?.invoice_id ?? normalizedTransaction?.invoice_reference
+      const invoiceId =
+        transaction.invoiceId ??
+        (transaction as any).invoice ??
+        (transaction as any).invoice_reference ??
+        normalizedTransaction?.invoice_id ??
+        normalizedTransaction?.invoice_reference ??
+        normalizedTransaction?.invoiceId ??
+        normalizedTransaction?.invoice
       await updateInvoiceStatusIfPaid(admin, organizationId, invoiceId, transaction.paymentStatus ?? normalizedTransaction?.payment_status)
 
       // Cash movement for new transaction only if it's already approved.
@@ -1591,6 +2954,12 @@ function calculateCashEffect(amount: unknown, isIncome: unknown) {
           await adjustBankAccountBalance(admin, bankAccountId, delta)
         }
       }
+
+      await syncPayrollRunStatusFromTransaction(
+        admin,
+        organizationId,
+        data as Record<string, unknown>
+      )
 
       return NextResponse.json({ transaction: data }, { status: 200 })
     } catch (error) {
@@ -1620,7 +2989,7 @@ function calculateCashEffect(amount: unknown, isIncome: unknown) {
 
       const { data: existingTransaction, error: fetchError } = await admin
         .from('transactions')
-        .select('id, amount, is_income, bank_account_id, organization_id, approval_status, payment_status, status')
+        .select('id, amount, accounting_type, date, budget_id, is_income, bank_account_id, assigned_bank_account_id, organization_id, approval_status, payment_status, status')
         .eq('id', transactionId)
         .maybeSingle()
 
@@ -1641,8 +3010,21 @@ function calculateCashEffect(amount: unknown, isIncome: unknown) {
         return NextResponse.json({ error: `Unable to delete transaction: ${deleteError.message}` }, { status: 400 })
       }
 
+      const removedBudgetImpact = calculateBudgetExpenseImpact(existingTransaction.amount, existingTransaction.accounting_type)
+      if (existingTransaction.budget_id && removedBudgetImpact > 0) {
+        await applyBudgetTrackingDelta(
+          admin,
+          organizationId,
+          existingTransaction.budget_id,
+          existingTransaction.date,
+          -removedBudgetImpact
+        )
+      }
+
+      const existingAccountId = resolveTransactionBankAccountId(existingTransaction as Record<string, unknown>)
+
       if (
-        existingTransaction.bank_account_id &&
+        existingAccountId &&
         isApprovedForCashMovement(
           existingTransaction.approval_status,
           existingTransaction.payment_status,
@@ -1651,7 +3033,7 @@ function calculateCashEffect(amount: unknown, isIncome: unknown) {
       ) {
         const reversal = -calculateCashEffect(existingTransaction.amount, existingTransaction.is_income)
         if (reversal !== 0) {
-          await adjustBankAccountBalance(admin, existingTransaction.bank_account_id, reversal)
+          await adjustBankAccountBalance(admin, existingAccountId, reversal)
         }
       }
 

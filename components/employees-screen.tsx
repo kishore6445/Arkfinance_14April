@@ -138,6 +138,10 @@ function buildDerivedEmployees(names: string[]): Employee[] {
   });
 }
 
+function isDerivedEmployee(employee: Employee | null | undefined) {
+  return Boolean(employee?.id?.startsWith('derived-'));
+}
+
 export function EmployeesScreen() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -167,6 +171,55 @@ export function EmployeesScreen() {
     status: 'Active',
     baseCtc: 0,
   });
+
+  const resetForm = () => {
+    setFormData({
+      firstName: '',
+      lastName: '',
+      email: '',
+      phone: '',
+      dob: '',
+      gender: 'M',
+      joiningDate: new Date().toISOString().split('T')[0],
+      departmentId: '',
+      designationId: '',
+      reportingManager: '',
+      bankAccount: {
+        accountNumber: '',
+        ifscCode: '',
+        bankName: '',
+        accountType: 'Savings',
+      },
+      status: 'Active',
+      baseCtc: 0,
+    });
+    setEditingEmployee(null);
+  };
+
+  const openCreateModal = () => {
+    resetForm();
+    setShowCreateModal(true);
+  };
+
+  const openEditModal = (employee: Employee) => {
+    setEditingEmployee(employee);
+    setFormData({
+      firstName: employee.firstName,
+      lastName: employee.lastName,
+      email: employee.email,
+      phone: employee.phone,
+      dob: employee.dob,
+      gender: employee.gender,
+      joiningDate: employee.joiningDate,
+      departmentId: employee.departmentId,
+      designationId: employee.designationId,
+      reportingManager: employee.reportingManager,
+      bankAccount: employee.bankAccount,
+      status: employee.status,
+      baseCtc: employee.baseCtc,
+    });
+    setShowCreateModal(true);
+  };
 
   useEffect(() => {
     fetchEmployees();
@@ -247,8 +300,9 @@ export function EmployeesScreen() {
     return matchesSearch && matchesFilter;
   });
 
-  const handleAddEmployee = async () => {
-    debugger;
+  const handleSaveEmployee = async () => {
+    const shouldUpdateExistingEmployee = Boolean(editingEmployee && !isDerivedEmployee(editingEmployee));
+
     if (!formData.firstName || !formData.lastName || !formData.email) {
       alert('Please fill required fields');
       return;
@@ -262,9 +316,11 @@ export function EmployeesScreen() {
       };
 
       const response = await fetch('/api/employees', {
-        method: 'POST',
+        method: shouldUpdateExistingEmployee ? 'PUT' : 'POST',
         headers,
         body: JSON.stringify({
+          id: shouldUpdateExistingEmployee ? editingEmployee?.id : undefined,
+          employeeCode: editingEmployee?.employeeCode,
           firstName: formData.firstName,
           lastName: formData.lastName,
           email: formData.email,
@@ -282,27 +338,30 @@ export function EmployeesScreen() {
 
       if (!response.ok) {
         const err = await response.json();
-        alert(err?.error ?? 'Failed to add employee');
+        alert(err?.error ?? `Failed to ${shouldUpdateExistingEmployee ? 'update' : 'save'} employee`);
         return;
       }
 
       const data = await response.json();
-      const created = mapEmployeeRow(data.employee as EmployeeApiRow);
-      setEmployees((prev) => [created, ...prev]);
+      const saved = mapEmployeeRow(data.employee as EmployeeApiRow);
+      setEmployees((prev) => {
+        if (!editingEmployee) {
+          return [saved, ...prev];
+        }
+
+        if (isDerivedEmployee(editingEmployee)) {
+          return prev.map((employee) => (employee.id === editingEmployee.id ? saved : employee));
+        }
+
+        return prev.map((employee) => (employee.id === saved.id ? saved : employee));
+      });
     } catch (error) {
-      console.error('[Employees] create error:', error);
-      alert('Failed to add employee');
+      console.error('[Employees] save error:', error);
+      alert(`Failed to ${shouldUpdateExistingEmployee ? 'update' : 'save'} employee`);
       return;
     }
 
-    setFormData({
-      firstName: '',
-      lastName: '',
-      email: '',
-      phone: '',
-      designationId: '',
-      status: 'Active',
-    });
+    resetForm();
     setShowCreateModal(false);
   };
 
@@ -342,7 +401,7 @@ export function EmployeesScreen() {
             <p className="text-sm text-gray-600 mt-0.5">Manage employee information and details</p>
           </div>
         </div>
-        <Button onClick={() => setShowCreateModal(true)} className="bg-blue-600 hover:bg-blue-700">
+        <Button onClick={openCreateModal} className="bg-blue-600 hover:bg-blue-700">
           <Plus size={18} className="mr-2" />
           Add Employee
         </Button>
@@ -419,7 +478,10 @@ export function EmployeesScreen() {
                 </td>
                 <td className="px-6 py-4 text-right">
                   <div className="flex justify-end gap-2">
-                    <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                    <button
+                      className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                      onClick={() => openEditModal(emp)}
+                    >
                       <Edit2 size={16} className="text-blue-600" />
                     </button>
                     <button
@@ -438,11 +500,21 @@ export function EmployeesScreen() {
       </div>
 
       {/* Create/Edit Modal */}
-      <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
+      <Dialog
+        open={showCreateModal}
+        onOpenChange={(open) => {
+          setShowCreateModal(open);
+          if (!open) {
+            resetForm();
+          }
+        }}
+      >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Add New Employee</DialogTitle>
-            <DialogDescription>Enter employee details</DialogDescription>
+            <DialogTitle>{editingEmployee ? 'Edit Employee' : 'Add New Employee'}</DialogTitle>
+            <DialogDescription>
+              {editingEmployee ? 'Update employee details' : 'Enter employee details'}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 max-h-[500px] overflow-y-auto">
             <div className="grid grid-cols-2 gap-4">
@@ -546,7 +618,9 @@ export function EmployeesScreen() {
           </div>
           <div className="flex gap-3 justify-end pt-6">
             <Button variant="outline" onClick={() => setShowCreateModal(false)}>Cancel</Button>
-            <Button onClick={handleAddEmployee} className="bg-blue-600 hover:bg-blue-700">Add Employee_test</Button>
+            <Button onClick={handleSaveEmployee} className="bg-blue-600 hover:bg-blue-700">
+              {editingEmployee ? 'Update Employee' : 'Add Employee'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

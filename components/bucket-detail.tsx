@@ -1,6 +1,8 @@
 'use client';
 
+import { useMemo } from 'react';
 import { ArrowLeft } from 'lucide-react';
+import { useAppState } from '@/context/app-state';
 
 interface Transaction {
   date: string;
@@ -9,54 +11,58 @@ interface Transaction {
   source: 'Bank' | 'Invoice';
 }
 
+interface Bucket {
+  id: string;
+  name: string;
+  type: 'Operating' | 'Reserve' | 'Liability' | 'Owner';
+  currentBalance: number;
+  monthlyTarget?: number;
+  status: 'healthy' | 'attention' | 'critical';
+}
+
 interface BucketDetailProps {
-  bucketId: string;
+  bucket: Bucket;
   onBack: () => void;
 }
 
-export function BucketDetail({ bucketId, onBack }: BucketDetailProps) {
-  // Sample data for the selected bucket
-  const bucket = {
-    id: bucketId,
-    name: 'Operations',
-    type: 'Operating',
-    currentBalance: 145000,
-    monthlyTarget: 80000,
-    status: 'healthy',
-    allocationRule: 'Monthly operating expenses like payroll, rent, and utilities.',
-    transactions: [
-      {
-        date: 'Feb 3',
-        description: 'Salary - Priya Sharma',
-        amount: 65000,
-        source: 'Bank' as const,
-      },
-      {
-        date: 'Jan 31',
-        description: 'Office Rent - January',
-        amount: 25000,
-        source: 'Bank' as const,
-      },
-      {
-        date: 'Jan 28',
-        description: 'AWS Services - Monthly',
-        amount: 8500,
-        source: 'Bank' as const,
-      },
-      {
-        date: 'Jan 25',
-        description: 'Internet & Utilities',
-        amount: 3200,
-        source: 'Bank' as const,
-      },
-      {
-        date: 'Jan 20',
-        description: 'Office Supplies',
-        amount: 1850,
-        source: 'Invoice' as const,
-      },
-    ],
-  };
+export function BucketDetail({ bucket, onBack }: BucketDetailProps) {
+  const { state } = useAppState();
+
+  const bucketTransactions = useMemo(() => {
+    return state.transactions
+      .filter((txn) => String((txn as any).bucketId ?? (txn as any).bucket_id ?? '') === bucket.id)
+      .sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime())
+      .slice(0, 12)
+      .map<Transaction>((txn) => ({
+        date: new Date(txn.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+        description: txn.description,
+        amount: Number(txn.amount ?? 0),
+        source: txn.invoice ? 'Invoice' : 'Bank',
+      }));
+  }, [bucket.id, state.transactions]);
+
+  const allocationExplanation = useMemo(() => {
+    const linked = state.transactions.filter(
+      (txn) => String((txn as any).bucketId ?? (txn as any).bucket_id ?? '') === bucket.id
+    );
+
+    if (linked.length === 0) {
+      return 'No transactions are linked to this bucket yet.';
+    }
+
+    const subtypeCounts = new Map<string, number>();
+    for (const transaction of linked) {
+      const key = transaction.subtype || transaction.accountingType;
+      subtypeCounts.set(key, (subtypeCounts.get(key) || 0) + 1);
+    }
+
+    const topSubtypes = Array.from(subtypeCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([name]) => name);
+
+    return `This bucket currently receives ${linked.length} linked transaction${linked.length === 1 ? '' : 's'}, mainly from ${topSubtypes.join(', ')}.`;
+  }, [bucket.id, state.transactions]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -128,7 +134,7 @@ export function BucketDetail({ bucketId, onBack }: BucketDetailProps) {
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
                 Monthly Target
               </p>
-              <p className="text-sm text-foreground">₹{bucket.monthlyTarget.toLocaleString()}</p>
+              <p className="text-sm text-foreground">₹{Number(bucket.monthlyTarget ?? 0).toLocaleString()}</p>
             </div>
 
             {/* Status */}
@@ -146,7 +152,7 @@ export function BucketDetail({ bucketId, onBack }: BucketDetailProps) {
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
                 Why This Bucket Exists
               </p>
-              <p className="text-sm text-foreground leading-relaxed">{bucket.allocationRule}</p>
+              <p className="text-sm text-foreground leading-relaxed">{allocationExplanation}</p>
             </div>
           </div>
 
@@ -168,7 +174,13 @@ export function BucketDetail({ bucketId, onBack }: BucketDetailProps) {
                 </div>
 
                 {/* Rows */}
-                {bucket.transactions.map((txn, idx) => (
+                {bucketTransactions.length === 0 && (
+                  <div className="px-4 py-6 text-sm text-muted-foreground">
+                    No transactions are currently linked to this bucket.
+                  </div>
+                )}
+
+                {bucketTransactions.map((txn, idx) => (
                   <div
                     key={idx}
                     className="px-4 py-3 flex items-center gap-4 border-b border-border last:border-b-0 hover:bg-muted/20 transition-colors"
@@ -191,9 +203,7 @@ export function BucketDetail({ bucketId, onBack }: BucketDetailProps) {
 
               {/* View in Inbox Link */}
               <div className="mt-6">
-                <button className="text-sm text-primary hover:underline font-medium">
-                  View in Inbox →
-                </button>
+                <p className="text-sm text-muted-foreground">Showing the latest linked transactions for this bucket.</p>
               </div>
             </div>
           </div>

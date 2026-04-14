@@ -24,6 +24,9 @@ type TransactionApiRow = {
   date: string | null;
   amount: number | null;
   is_income: boolean | null;
+  approval_status?: string | null;
+  payment_status?: string | null;
+  status?: string | null;
   accounting_type?: string | null;
   source_type?: string | null;
   description?: string | null;
@@ -191,10 +194,31 @@ export function CashRunwayScreen() {
 
   const monthlyTotals: Record<string, { inflow: number; outflow: number }> = {};
 
-  // Transactions — skip payroll-tagged ones to avoid double-counting with payroll runs
+  const normalizeUpper = (value: unknown) => String(value ?? '').trim().toUpperCase();
+
+  const isPostedCashTransaction = (t: TransactionApiRow) => {
+    const approval = normalizeUpper(t.approval_status);
+    const payment = normalizeUpper(t.payment_status);
+    const txnStatus = normalizeUpper(t.status);
+
+    const hasWorkflowData = Boolean(t.approval_status ?? t.payment_status ?? t.status);
+    if (!hasWorkflowData) {
+      return true;
+    }
+
+    const approvalSatisfied =
+      approval === 'APPROVED' ||
+      approval === 'APPROVED_FOR_PAYMENT' ||
+      txnStatus === 'APPROVED';
+
+    return approvalSatisfied && payment === 'PAID';
+  };
+
+  // Transactions are the source of truth for runway inflows/outflows, including payroll.
   transactions
-    .filter((t) => !isPayrollTransaction(t))
     .forEach((t) => {
+      if (!isPostedCashTransaction(t)) return;
+
       const key = getMonthKey(t.date);
       if (!key) return;
       if (!monthlyTotals[key]) monthlyTotals[key] = { inflow: 0, outflow: 0 };

@@ -424,74 +424,121 @@ export function generateBalanceSheet(
   transactions: Transaction[],
   invoices: Invoice[],
   asOfDate: string
-): BalanceSheet {
-  // Filter transactions up to the date
-  const filtered = transactions.filter(t => new Date(t.date) <= new Date(asOfDate));
+): any {
+  const filtered = (transactions ?? []).filter(t => new Date(String((t as any).date ?? '')) <= new Date(asOfDate));
 
-  // Calculate cash (sum of all income minus expenses)
-  const cash = filtered.reduce((sum, t) => {
-    return t.type === 'income' ? sum + t.amount : sum - t.amount;
-  }, 0);
+  const normalizeText = (value: unknown) => String(value ?? '').trim().toLowerCase();
+  const containsWord = (value: unknown, keywords: string[]) => {
+    const text = normalizeText(value);
+    return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
+  };
 
-  // Accounts Receivable (from unpaid revenue invoices)
-  const accountsReceivable = invoices
-    .filter(inv => inv.type === 'Revenue' && inv.balanceDue > 0)
-    .reduce((sum, inv) => sum + inv.balanceDue, 0);
+  const inferAccountingType = (t: any): 'Revenue' | 'Expense' | 'Asset' | 'Liability' => {
+    const explicit = normalizeText(t.accountingType ?? t.accounting_type);
+    if (explicit === 'asset') return 'Asset';
+    if (explicit === 'liability') return 'Liability';
+    if (explicit === 'expense') return 'Expense';
+    if (explicit === 'revenue') return 'Revenue';
 
-  // Fixed Assets (simplified - from expense transactions marked as assets)
+    const legacyType = normalizeText(t.type);
+    if (legacyType === 'income') return 'Revenue';
+    if (legacyType === 'expense') return 'Expense';
+
+    return Boolean(t.isIncome ?? t.is_income) ? 'Revenue' : 'Expense';
+  };
+
+  const toSignedAmount = (t: any) => {
+    const amount = Number(t.amount ?? 0);
+    const accountingType = inferAccountingType(t);
+    if (accountingType === 'Revenue') return amount;
+    if (accountingType === 'Expense') return -amount;
+    return 0;
+  };
+
+  const accountsReceivable = (invoices ?? [])
+    .filter(inv => inv.type === 'Revenue' && Number(inv.balanceDue ?? 0) > 0)
+    .reduce((sum, inv) => sum + Number(inv.balanceDue ?? 0), 0);
+
+  const accountsPayable = (invoices ?? [])
+    .filter(inv => inv.type === 'Expense' && Number(inv.balanceDue ?? 0) > 0)
+    .reduce((sum, inv) => sum + Number(inv.balanceDue ?? 0), 0);
+
+  const operationalCash = filtered.reduce((sum, t) => sum + toSignedAmount(t), 0);
+
   const fixedAssets = filtered
-    .filter(t => t.category && (t.category.includes('Equipment') || t.category.includes('Property')))
-    .reduce((sum, t) => sum + t.amount, 0);
+    .filter(t => inferAccountingType(t) === 'Asset')
+    .reduce((sum, t) => sum + Math.abs(Number((t as any).amount ?? 0)), 0);
 
-  // Total Assets
-  const totalAssets = cash + accountsReceivable + fixedAssets;
+  const liabilityTransactions = filtered.filter(t => inferAccountingType(t) === 'Liability');
+  const longTermLiabilitiesFromTx = liabilityTransactions
+    .filter(t => containsWord((t as any).subtype ?? (t as any).category ?? (t as any).description, ['loan', 'term', 'debt']))
+    .reduce((sum, t) => sum + Math.abs(Number((t as any).amount ?? 0)), 0);
+  const totalLiabilitiesFromTx = liabilityTransactions
+    .reduce((sum, t) => sum + Math.abs(Number((t as any).amount ?? 0)), 0);
+  const currentLiabilitiesFromTx = Math.max(0, totalLiabilitiesFromTx - longTermLiabilitiesFromTx);
 
-  // Accounts Payable (from unpaid expense invoices)
-  const accountsPayable = invoices
-    .filter(inv => inv.type === 'Expense' && inv.balanceDue > 0)
-    .reduce((sum, inv) => sum + inv.balanceDue, 0);
-
-  // Short-term loans (simplified - from expense transactions)
-  const loans = filtered
-    .filter(t => t.category && (t.category.includes('Loan') || t.category.includes('Debt')))
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  // Total Liabilities
-  const totalLiabilities = accountsPayable + loans;
-
-  // Equity (simplified)
   const retainedEarnings = filtered
-    .filter(t => t.type === 'income')
-    .reduce((sum, t) => sum + t.amount, 0) -
-    filtered
-      .filter(t => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0);
+    .reduce((sum, t) => sum + toSignedAmount(t), 0);
+  const capitalContributions = filtered
+    .filter(t => containsWord((t as any).subtype ?? (t as any).category ?? (t as any).description, ['capital', 'owner']))
+    .reduce((sum, t) => sum + Math.abs(Number((t as any).amount ?? 0)), 0);
 
-  const totalEquity = retainedEarnings;
+  const currentAssets = Math.max(0, operationalCash) + accountsReceivable;
+  const totalAssets = currentAssets + fixedAssets;
 
-  const assets = [
-    { name: 'Cash', amount: Math.max(0, cash) },
+  const currentLiabilities = accountsPayable + currentLiabilitiesFromTx;
+  const longTermLiabilities = longTermLiabilitiesFromTx;
+  const totalLiabilities = currentLiabilities + longTermLiabilities;
+
+  const equityTotal = capitalContributions + retainedEarnings;
+  const totalLiabilitiesAndEquity = totalLiabilities + equityTotal;
+
+  const legacyAssets = [
+    { name: 'Cash', amount: Math.max(0, operationalCash) },
     { name: 'Accounts Receivable', amount: accountsReceivable },
     { name: 'Fixed Assets', amount: fixedAssets },
   ];
 
-  const liabilities = [
+  const legacyLiabilities = [
     { name: 'Accounts Payable', amount: accountsPayable },
-    { name: 'Loans Payable', amount: loans },
+    { name: 'Loans Payable', amount: longTermLiabilities },
   ];
 
-  const equity = [
+  const legacyEquity = [
+    { name: 'Capital', amount: capitalContributions },
     { name: 'Retained Earnings', amount: retainedEarnings },
   ];
 
   return {
     date: asOfDate,
-    assets,
+    assets: {
+      current: currentAssets,
+      fixed: fixedAssets,
+      total: totalAssets,
+      breakdown: legacyAssets,
+    },
+    liabilities: {
+      current: currentLiabilities,
+      longTerm: longTermLiabilities,
+      total: totalLiabilities,
+      breakdown: legacyLiabilities,
+    },
+    equity: {
+      capital: capitalContributions,
+      retainedEarnings,
+      total: equityTotal,
+      breakdown: legacyEquity,
+    },
+    totalLiabilitiesAndEquity,
+    // Backward-compatible fields for any legacy caller.
     totalAssets,
-    liabilities,
     totalLiabilities,
-    equity,
-    totalEquity,
+    totalEquity: equityTotal,
+    legacy: {
+      assets: legacyAssets,
+      liabilities: legacyLiabilities,
+      equity: legacyEquity,
+    },
   };
 }
 
@@ -508,19 +555,22 @@ export function generateCashFlowStatement(
     return txDate >= new Date(startDate) && txDate <= new Date(endDate);
   });
 
+  const categoryContains = (tx: Transaction, keyword: string) =>
+    String(tx.category ?? '').toLowerCase().includes(keyword.toLowerCase());
+
   // Operating cash flow (simplified - net income equivalent)
   const operatingCashFlow = filtered
-    .filter(t => !t.category.includes('Equipment') && !t.category.includes('Property'))
+    .filter(t => !categoryContains(t, 'Equipment') && !categoryContains(t, 'Property'))
     .reduce((sum, t) => (t.type === 'income' ? sum + t.amount : sum - t.amount), 0);
 
   // Investing cash flow (from asset purchases/sales)
   const investingCashFlow = filtered
-    .filter(t => t.category.includes('Equipment') || t.category.includes('Property'))
+    .filter(t => categoryContains(t, 'Equipment') || categoryContains(t, 'Property'))
     .reduce((sum, t) => (t.type === 'income' ? sum + t.amount : sum - t.amount), 0);
 
   // Financing cash flow (from loans/equity)
   const financingCashFlow = filtered
-    .filter(t => t.category.includes('Loan') || t.category.includes('Capital'))
+    .filter(t => categoryContains(t, 'Loan') || categoryContains(t, 'Capital'))
     .reduce((sum, t) => (t.type === 'income' ? sum + t.amount : sum - t.amount), 0);
 
   const netCashFlow = operatingCashFlow + investingCashFlow + financingCashFlow;

@@ -35,17 +35,23 @@ type InvoiceRow = {
   id: string;
   invoice_no?: string | null;
   invoiceNo?: string | null;
+  invoiceno?: string | null;
   party_name?: string | null;
   partyName?: string | null;
+  partyname?: string | null;
   type?: 'Revenue' | 'Expense' | null;
   invoice_amount?: number | null;
   invoiceAmount?: number | null;
+  invoiceamount?: number | null;
   paid_amount?: number | null;
   paidAmount?: number | null;
+  paidamount?: number | null;
   balance_due?: number | null;
   balanceDue?: number | null;
+  balancedue?: number | null;
   due_date?: string | null;
   dueDate?: string | null;
+  duedate?: string | null;
   status?: Invoice['status'] | null;
 };
 
@@ -86,16 +92,29 @@ const getStatusColor = (status: string) => {
 };
 
 const mapInvoiceRow = (row: InvoiceRow): Invoice => {
-  const invoiceAmount = row.invoice_amount ?? row.invoiceAmount ?? 0;
-  const rawPaidAmount = row.paid_amount ?? row.paidAmount ?? 0;
-  const rawBalanceDue = row.balance_due ?? row.balanceDue ?? Math.max(0, invoiceAmount - rawPaidAmount);
-  const dueDate = row.due_date ?? row.dueDate ?? '';
-  const normalizedStatus = String(row.status ?? '').trim().toUpperCase();
+  const invoiceAmount = Number(row.invoice_amount ?? row.invoiceAmount ?? row.invoiceamount ?? 0);
+  const rawPaidAmount = Number(row.paid_amount ?? row.paidAmount ?? row.paidamount ?? 0);
+  const rawBalanceDue = Number(
+    row.balance_due ?? row.balanceDue ?? row.balancedue ?? Math.max(0, invoiceAmount - rawPaidAmount)
+  );
+  const dueDate = row.due_date ?? row.dueDate ?? row.duedate ?? '';
+  const normalizedStatus = String(row.status ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_');
+
+  const paidAmountCandidate = Math.max(0, rawPaidAmount);
+  const balanceDueCandidate = Math.max(0, rawBalanceDue);
+  const isFullyPaidByAmount = invoiceAmount > 0 && (balanceDueCandidate <= 0 || paidAmountCandidate >= invoiceAmount);
 
   let computedStatus: Invoice['status'] = 'Unpaid';
-  if (rawBalanceDue <= 0 || normalizedStatus === 'PAID') {
+  if (isFullyPaidByAmount || normalizedStatus === 'PAID') {
     computedStatus = 'Paid';
-  } else if (rawPaidAmount > 0 || normalizedStatus === 'PARTIAL' || normalizedStatus === 'PARTIALLY PAID') {
+  } else if (
+    paidAmountCandidate > 0 ||
+    normalizedStatus === 'PARTIAL' ||
+    normalizedStatus === 'PARTIALLY_PAID'
+  ) {
     computedStatus = 'Partial';
   } else {
     const due = dueDate ? new Date(dueDate) : null;
@@ -104,13 +123,13 @@ const mapInvoiceRow = (row: InvoiceRow): Invoice => {
     }
   }
 
-  const paidAmount = computedStatus === 'Paid' ? invoiceAmount : rawPaidAmount;
-  const balanceDue = computedStatus === 'Paid' ? 0 : rawBalanceDue;
+  const paidAmount = computedStatus === 'Paid' ? invoiceAmount : paidAmountCandidate;
+  const balanceDue = computedStatus === 'Paid' ? 0 : balanceDueCandidate;
 
   return {
     id: row.id,
-    invoiceNo: row.invoice_no ?? row.invoiceNo ?? '',
-    partyName: row.party_name ?? row.partyName ?? '',
+    invoiceNo: row.invoice_no ?? row.invoiceNo ?? row.invoiceno ?? '',
+    partyName: row.party_name ?? row.partyName ?? row.partyname ?? '',
     partyGSTNo: '',
     billingAddress: '',
     shippingAddress: '',
@@ -347,7 +366,7 @@ export function InvoicesScreen({ onNavigate }: InvoicesScreenProps) {
   };
 
   // Function to save matched transactions
-  const saveMatchedTransactions = () => {
+  const saveMatchedTransactions = async () => {
     if (!selectedInvoice) return;
     
     const totalMatched = matchedTransactions.reduce((sum, m) => sum + m.appliedAmount, 0);
@@ -357,23 +376,76 @@ export function InvoicesScreen({ onNavigate }: InvoicesScreenProps) {
     let newStatus: 'Paid' | 'Partial' | 'Unpaid' | 'Overdue' = 'Unpaid';
     if (newBalanceDue === 0) newStatus = 'Paid';
     else if (newPaidAmount > 0) newStatus = 'Partial';
-    
-    setInvoices(
-      invoices.map((inv) =>
-        inv.id === selectedInvoiceId
-          ? {
-              ...inv,
-              paidAmount: newPaidAmount,
-              balanceDue: newBalanceDue,
-              status: newStatus,
-            }
-          : inv
-      )
-    );
-    
-    // Clear matched transactions and close panel
-    setMatchedTransactions([]);
-    setShowMatchingPanel(false);
+
+    try {
+      const accessToken = await getAccessToken();
+      const response = await fetch('/api/invoices', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+          'x-access-token': accessToken,
+          'x-user-id': currentUserId ?? '',
+          'x-organization-id': effectiveOrganizationId ?? '',
+        },
+        body: JSON.stringify({
+          accessToken,
+          userId: currentUserId,
+          organizationId: effectiveOrganizationId,
+          id: selectedInvoice.id,
+          invoiceNo: selectedInvoice.invoiceNo,
+          partyName: selectedInvoice.partyName,
+          type: selectedInvoice.type,
+          invoiceAmount: selectedInvoice.invoiceAmount,
+          paidAmount: newPaidAmount,
+          balanceDue: newBalanceDue,
+          dueDate: selectedInvoice.dueDate,
+          status: newStatus,
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result?.error ?? 'Failed to update invoice payment status.');
+      }
+
+      const updatedInvoice = mapInvoiceRow(result.invoice as InvoiceRow);
+      setInvoices((prev) => prev.map((inv) => (inv.id === updatedInvoice.id ? updatedInvoice : inv)));
+
+      // Write invoice_reference + payment_status back to every matched transaction so that
+      // future payment status changes in Finance Inbox can cascade to this invoice.
+      await Promise.allSettled(
+        matchedTransactions.map((m) =>
+          fetch('/api/transactions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${accessToken}`,
+              'x-access-token': accessToken,
+              'x-user-id': currentUserId ?? '',
+              'x-organization-id': effectiveOrganizationId ?? '',
+            },
+            body: JSON.stringify({
+              accessToken,
+              userId: currentUserId,
+              organizationId: effectiveOrganizationId,
+              transaction: {
+                id: m.bankTxnId,
+                payment_status: 'Paid',
+                invoice_reference: selectedInvoice.id,
+                invoiceId: selectedInvoice.id,
+              },
+            }),
+          })
+        )
+      );
+
+      setMatchedTransactions([]);
+      setShowMatchingPanel(false);
+      window.dispatchEvent(new CustomEvent('finance:transactions-updated'));
+    } catch (err: any) {
+      setError(err?.message ?? 'Failed to update invoice payment status.');
+    }
   };
 
   // Sample bank transactions from Inbox

@@ -20,6 +20,7 @@ type UserProfileRow = {
   id: string
   organization_id: string | null
   is_active: boolean | null
+  role: string | null
 }
 
 function getAdminClient() {
@@ -49,7 +50,7 @@ async function getAuthorizedProfile(request: Request) {
 
   const { data: profile, error: profileError } = await admin
     .from('users')
-    .select('id, organization_id, is_active')
+    .select('id, organization_id, is_active, role')
     .eq('id', authData.user.id)
     .maybeSingle<UserProfileRow>()
 
@@ -109,6 +110,19 @@ export async function POST(request: Request, context: RouteContext) {
 
     if (!body.action?.trim()) {
       return NextResponse.json({ error: 'action is required' }, { status: 400 })
+    }
+
+    // Only Accountants/Admins can record an APPROVED action
+    if (body.action.trim().toUpperCase() === 'APPROVED') {
+      const roleNormalized = (profile.role ?? '')
+        .trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+      const allowedRoles = ['ACCOUNTANT', 'ORG_ADMIN', 'SUPER_ADMIN']
+      if (!allowedRoles.includes(roleNormalized)) {
+        return NextResponse.json(
+          { error: 'Only Accountant users can approve transactions' },
+          { status: 403 }
+        )
+      }
     }
 
     const payload = {

@@ -211,7 +211,7 @@ export async function POST(request: Request) {
           id: ownerAuthUser.id,
           organization_id: (organization as OrganizationRow).id,
           email: body.email,
-          role: 'Owner',
+          role: 'Accountant',
           is_active: true,
         },
         { onConflict: 'id' }

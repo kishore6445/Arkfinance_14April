@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Download, ChevronRight, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { CashOutlookScreen } from '@/components/cash-outlook-screen';
 import { BudgetVsActualScreen } from '@/components/budget-vs-actual-screen';
+import { useAppState } from '@/context/app-state';
 
 type DateRange = 'month' | 'last-month' | 'quarter' | 'year' | 'custom';
 
@@ -63,82 +64,137 @@ interface UnmatchedTransaction {
   status: 'Needs Info' | 'Action Required' | 'Recorded';
 }
 
-const reportCards: ReportCard[] = [
-  {
-    id: 'budget-vs-actual',
-    title: 'Budget vs Actual',
-    description: 'Compare bucket targets against actual spending and balances.',
-    metrics: [
-      { label: 'Buckets', value: '4' },
-      { label: 'Healthy', value: '3' },
-      { label: 'Attention', value: '1' },
-    ],
-  },
-  {
-    id: 'cash-outlook',
-    title: 'Cash Outlook',
-    description: 'Directional forecasting for the next 30/60/90 days.',
-    metrics: [
-      { label: 'Pressure Points', value: '1' },
-      { label: 'At Risk Receivables', value: '₹40,500' },
-      { label: 'Payables Due Soon', value: '₹45,700' },
-    ],
-  },
-  {
-    id: 'cash-flow',
-    title: 'Cash Flow Summary',
-    description: 'Money in vs money out for the selected period.',
-    metrics: [
-      { label: 'Inflows', value: '₹2,35,000' },
-      { label: 'Outflows', value: '₹1,40,500' },
-      { label: 'Net Flow', value: '₹94,500' },
-    ],
-  },
-  {
-    id: 'receivables',
-    title: 'Receivables',
-    description: 'Who needs to pay you, and what is overdue.',
-    metrics: [
-      { label: 'Total Outstanding', value: '₹43,000' },
-      { label: 'Overdue', value: '₹28,000' },
-      { label: 'Expected This Month', value: '₹15,000' },
-    ],
-  },
-  {
-    id: 'payables',
-    title: 'Payables',
-    description: 'What you need to pay, and what is coming due.',
-    metrics: [
-      { label: 'Total Due', value: '₹18,200' },
-      { label: 'Due This Month', value: '₹8,500' },
-      { label: 'Average Payment Term', value: '31 days' },
-    ],
-  },
-  {
-    id: 'payables',
-    title: 'Payables',
-    description: 'What you need to pay vendors, and what is overdue.',
-    metrics: [
-      { label: 'Total Outstanding', value: '₹45,250' },
-      { label: 'Overdue', value: '₹12,000' },
-      { label: 'Due This Week', value: '₹32,500' },
-    ],
-  },
-  {
-    id: 'unmatched',
-    title: 'Unmatched Transactions',
-    description: 'Bank transactions waiting to be matched or categorized.',
-    metrics: [
-      { label: 'Pending', value: '12' },
-      { label: 'Needs Info', value: '5' },
-      { label: 'Action Required', value: '3' },
-    ],
-  },
-];
-
 export function ReportsScreen() {
-  const [dateRange, setDateRange] = useState<DateRange>('month');
+  const { state } = useAppState();
+  const [dateRange, setDateRange] = useState<DateRange>('year');
   const [selectedReport, setSelectedReport] = useState<string | null>(null);
+
+  const currency = (value: number) => `₹${Math.round(value).toLocaleString('en-IN')}`;
+
+  const inSelectedRange = (rawDate: string) => {
+    const date = new Date(rawDate);
+    if (Number.isNaN(date.getTime())) return false;
+    const now = new Date();
+
+    if (dateRange === 'year') {
+      return date.getFullYear() === now.getFullYear();
+    }
+
+    if (dateRange === 'quarter') {
+      const currentQuarter = Math.floor(now.getMonth() / 3);
+      return date.getFullYear() === now.getFullYear() && Math.floor(date.getMonth() / 3) === currentQuarter;
+    }
+
+    if (dateRange === 'last-month') {
+      const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      return date.getFullYear() === lastMonth.getFullYear() && date.getMonth() === lastMonth.getMonth();
+    }
+
+    if (dateRange === 'month') {
+      return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
+    }
+
+    if (dateRange === 'custom') {
+      return true;
+    }
+
+    return true;
+  };
+
+  const scopedTransactions = useMemo(
+    () => state.transactions.filter((t) => inSelectedRange(String(t.date ?? ''))),
+    [state.transactions, dateRange]
+  );
+
+  const scopedInvoices = useMemo(
+    () => state.invoices.filter((inv) => inSelectedRange(String(inv.dueDate ?? ''))),
+    [state.invoices, dateRange]
+  );
+
+  const reportCards: ReportCard[] = useMemo(() => {
+    const inflows = scopedTransactions.filter((t) => t.isIncome).reduce((sum, t) => sum + Number(t.amount ?? 0), 0);
+    const outflows = scopedTransactions.filter((t) => !t.isIncome).reduce((sum, t) => sum + Number(t.amount ?? 0), 0);
+
+    const receivables = scopedInvoices.filter((inv) => inv.type === 'Revenue');
+    const payables = scopedInvoices.filter((inv) => inv.type === 'Expense');
+
+    const receivableOutstanding = receivables.reduce((sum, inv) => sum + Number(inv.balanceDue ?? 0), 0);
+    const receivableOverdue = receivables
+      .filter((inv) => String(inv.status).toLowerCase() === 'overdue')
+      .reduce((sum, inv) => sum + Number(inv.balanceDue ?? 0), 0);
+
+    const payableOutstanding = payables.reduce((sum, inv) => sum + Number(inv.balanceDue ?? 0), 0);
+    const payableOverdue = payables
+      .filter((inv) => String(inv.status).toLowerCase() === 'overdue')
+      .reduce((sum, inv) => sum + Number(inv.balanceDue ?? 0), 0);
+
+    const unmatched = scopedTransactions.filter((t) => !t.invoice || String(t.invoice).trim().length === 0);
+    const needsInfo = unmatched.filter((t) => t.status === 'Needs Info').length;
+    const actionRequired = unmatched.filter((t) => t.status === 'Action Required').length;
+
+    return [
+      {
+        id: 'budget-vs-actual',
+        title: 'Budget vs Actual',
+        description: 'Compare bucket targets against actual spending and balances.',
+        metrics: [
+          { label: 'Transactions', value: scopedTransactions.length },
+          { label: 'Expenses', value: currency(outflows) },
+          { label: 'Revenue', value: currency(inflows) },
+        ],
+      },
+      {
+        id: 'cash-outlook',
+        title: 'Cash Outlook',
+        description: 'Directional forecasting for the next 30/60/90 days.',
+        metrics: [
+          { label: 'Net Flow', value: currency(inflows - outflows) },
+          { label: 'At Risk Receivables', value: currency(receivableOverdue) },
+          { label: 'Payables Due Soon', value: currency(payableOutstanding) },
+        ],
+      },
+      {
+        id: 'cash-flow',
+        title: 'Cash Flow Summary',
+        description: 'Money in vs money out for the selected period.',
+        metrics: [
+          { label: 'Inflows', value: currency(inflows) },
+          { label: 'Outflows', value: currency(outflows) },
+          { label: 'Net Flow', value: currency(inflows - outflows) },
+        ],
+      },
+      {
+        id: 'receivables',
+        title: 'Receivables',
+        description: 'Who needs to pay you, and what is overdue.',
+        metrics: [
+          { label: 'Total Outstanding', value: currency(receivableOutstanding) },
+          { label: 'Overdue', value: currency(receivableOverdue) },
+          { label: 'Invoice Count', value: receivables.length },
+        ],
+      },
+      {
+        id: 'payables',
+        title: 'Payables',
+        description: 'What you need to pay vendors, and what is overdue.',
+        metrics: [
+          { label: 'Total Outstanding', value: currency(payableOutstanding) },
+          { label: 'Overdue', value: currency(payableOverdue) },
+          { label: 'Invoice Count', value: payables.length },
+        ],
+      },
+      {
+        id: 'unmatched',
+        title: 'Unmatched Transactions',
+        description: 'Transactions waiting to be linked to invoices.',
+        metrics: [
+          { label: 'Pending', value: unmatched.length },
+          { label: 'Needs Info', value: needsInfo },
+          { label: 'Action Required', value: actionRequired },
+        ],
+      },
+    ];
+  }, [scopedTransactions, scopedInvoices]);
 
   const dateRangeOptions = [
     { id: 'month', label: 'This Month' },
@@ -157,21 +213,23 @@ export function ReportsScreen() {
   }
 
   if (selectedReport === 'cash-flow') {
-    const inflows: CashFlowDriver[] = [
-      { description: 'Client Payment - Acme Studios', amount: 50000, source: 'Bank' },
-      { description: 'Invoice INV-001 Received', amount: 35000, source: 'Invoice' },
-      { description: 'Client Payment - Beta Corp', amount: 32500, source: 'Bank' },
-      { description: 'Investment Deposit', amount: 75000, source: 'Bank' },
-      { description: 'Refund Processed', amount: 42500, source: 'Bank' },
-    ];
+    const inflows: CashFlowDriver[] = scopedTransactions
+      .filter((t) => t.isIncome)
+      .slice(0, 10)
+      .map((t) => ({
+        description: t.description,
+        amount: Number(t.amount ?? 0),
+        source: t.invoice ? 'Invoice' : 'Bank',
+      }));
 
-    const outflows: CashFlowDriver[] = [
-      { description: 'Vendor Payment - AWS', amount: 28000, source: 'Bank' },
-      { description: 'Salary Payroll', amount: 65000, source: 'Bank' },
-      { description: 'Office Rent', amount: 32500, source: 'Invoice' },
-      { description: 'Software Subscriptions', amount: 8750, source: 'Bank' },
-      { description: 'Equipment Purchase', amount: 12000, source: 'Bank' },
-    ];
+    const outflows: CashFlowDriver[] = scopedTransactions
+      .filter((t) => !t.isIncome)
+      .slice(0, 10)
+      .map((t) => ({
+        description: t.description,
+        amount: Number(t.amount ?? 0),
+        source: t.invoice ? 'Invoice' : 'Bank',
+      }));
 
     const totalInflow = inflows.reduce((sum, item) => sum + item.amount, 0);
     const totalOutflow = outflows.reduce((sum, item) => sum + item.amount, 0);
@@ -290,11 +348,25 @@ export function ReportsScreen() {
   }
 
   if (selectedReport === 'receivables') {
-    const receivables: ReceivableInvoice[] = [
-      { id: '1', party: 'Acme Studios', invoiceNo: 'INV-2401-001', dueDate: 'Jan 20, 2024', amount: 50000, paid: 50000, balance: 0, status: 'Paid' },
-      { id: '2', party: 'Beta Corp', invoiceNo: 'INV-2401-002', dueDate: 'Feb 15, 2024', amount: 35000, paid: 20000, balance: 15000, status: 'Partial' },
-      { id: '3', party: 'Gamma Ltd', invoiceNo: 'INV-2401-003', dueDate: 'Jan 10, 2024', amount: 28000, paid: 0, balance: 28000, status: 'Overdue' },
-    ];
+    const receivables: ReceivableInvoice[] = scopedInvoices
+      .filter((inv) => inv.type === 'Revenue')
+      .map((inv) => ({
+        id: inv.id,
+        party: inv.partyName,
+        invoiceNo: inv.invoiceNo,
+        dueDate: inv.dueDate,
+        amount: Number(inv.invoiceAmount ?? 0),
+        paid: Number(inv.paidAmount ?? 0),
+        balance: Number(inv.balanceDue ?? 0),
+        status:
+          inv.status === 'Paid'
+            ? 'Paid'
+            : inv.status === 'Partial' || inv.status === 'Partially Paid'
+              ? 'Partial'
+              : inv.status === 'Overdue'
+                ? 'Overdue'
+                : 'Unpaid',
+      }));
 
     const totalOutstanding = receivables.reduce((sum, inv) => sum + inv.balance, 0);
     const overdueAmount = receivables.filter(inv => inv.status === 'Overdue').reduce((sum, inv) => sum + inv.balance, 0);
@@ -409,17 +481,36 @@ export function ReportsScreen() {
   }
 
   if (selectedReport === 'payables') {
-    const payables: PayableInvoice[] = [
-      { id: '1', vendor: 'AWS Services', billNo: 'BILL-2401-001', dueDate: 'Jan 25, 2024', amount: 8500, paid: 8500, balance: 0, status: 'Paid' },
-      { id: '2', vendor: 'Office Supplies Co', billNo: 'BILL-2401-002', dueDate: 'Feb 05, 2024', amount: 3200, paid: 0, balance: 3200, status: 'Unpaid' },
-      { id: '3', vendor: 'Vendor XYZ', billNo: 'BILL-2401-003', dueDate: 'Feb 10, 2024', amount: 15000, paid: 10000, balance: 5000, status: 'Partial' },
-      { id: '4', vendor: 'Utilities Corp', billNo: 'BILL-2401-004', dueDate: 'Jan 15, 2024', amount: 12000, paid: 0, balance: 12000, status: 'Overdue' },
-      { id: '5', vendor: 'Telecom Services', billNo: 'BILL-2401-005', dueDate: 'Feb 20, 2024', amount: 7050, paid: 7050, balance: 0, status: 'Paid' },
-    ];
+    const payables: PayableInvoice[] = scopedInvoices
+      .filter((inv) => inv.type === 'Expense')
+      .map((inv) => ({
+        id: inv.id,
+        vendor: inv.partyName,
+        billNo: inv.invoiceNo,
+        dueDate: inv.dueDate,
+        amount: Number(inv.invoiceAmount ?? 0),
+        paid: Number(inv.paidAmount ?? 0),
+        balance: Number(inv.balanceDue ?? 0),
+        status:
+          inv.status === 'Paid'
+            ? 'Paid'
+            : inv.status === 'Partial' || inv.status === 'Partially Paid'
+              ? 'Partial'
+              : inv.status === 'Overdue'
+                ? 'Overdue'
+                : 'Unpaid',
+      }));
 
     const totalOutstanding = payables.reduce((sum, bill) => sum + bill.balance, 0);
     const overdueAmount = payables.filter(bill => bill.status === 'Overdue').reduce((sum, bill) => sum + bill.balance, 0);
-    const dueThisWeek = 32500; // Fixed value for demo
+    const now = new Date();
+    const next7 = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7);
+    const dueThisWeek = payables
+      .filter((bill) => {
+        const dueDate = new Date(bill.dueDate);
+        return dueDate >= now && dueDate <= next7;
+      })
+      .reduce((sum, bill) => sum + bill.balance, 0);
 
     return (
       <main className="min-h-screen bg-background text-foreground flex flex-col">
@@ -647,14 +738,18 @@ export function ReportsScreen() {
   }
 
   if (selectedReport === 'unmatched') {
-    const unmatchedTransactions: UnmatchedTransaction[] = [
-      { id: '1', date: 'Feb 4, 2024', description: 'Acme Studios - Project Delivery', amount: 45000, type: 'Revenue', invoiceMatch: 'Not linked', status: 'Action Required' },
-      { id: '2', date: 'Feb 3, 2024', description: 'AWS Services', amount: 8500, type: 'Expense', invoiceMatch: 'Not linked', status: 'Needs Info' },
-      { id: '3', date: 'Feb 2, 2024', description: 'Client Payment - Beta Corp', amount: 32500, type: 'Revenue', invoiceMatch: '', status: 'Recorded' },
-      { id: '4', date: 'Feb 1, 2024', description: 'Office Supplies', amount: 3200, type: 'Expense', invoiceMatch: 'Not linked', status: 'Needs Info' },
-      { id: '5', date: 'Jan 31, 2024', description: 'Utilities Payment', amount: 12000, type: 'Liability', invoiceMatch: 'Not linked', status: 'Action Required' },
-      { id: '6', date: 'Jan 30, 2024', description: 'Equipment Purchase', amount: 45000, type: 'Expense', invoiceMatch: '', status: 'Needs Info' },
-    ];
+    const unmatchedTransactions: UnmatchedTransaction[] = scopedTransactions
+      .filter((t) => !t.invoice || String(t.invoice).trim().length === 0)
+      .slice(0, 50)
+      .map((t) => ({
+        id: t.id,
+        date: t.date,
+        description: t.description,
+        amount: Number(t.amount ?? 0),
+        type: t.accountingType === 'Asset' ? 'Expense' : t.accountingType,
+        invoiceMatch: 'Not linked',
+        status: (t.status === 'Needs Info' || t.status === 'Action Required' ? t.status : 'Recorded') as UnmatchedTransaction['status'],
+      }));
 
     const needsInfoCount = unmatchedTransactions.filter(t => t.status === 'Needs Info').length;
     const actionRequiredCount = unmatchedTransactions.filter(t => t.status === 'Action Required').length;

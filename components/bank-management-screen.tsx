@@ -37,6 +37,32 @@ type BucketRow = {
   bucket_type?: 'Operating' | 'Reserve' | 'Liability' | 'Owner' | null;
 };
 
+type TransactionRow = {
+  id?: string;
+  amount?: number | null;
+  is_income?: boolean | null;
+  isIncome?: boolean | null;
+  bank_account_id?: string | null;
+  bankAccountId?: string | null;
+  assigned_bank_account_id?: string | null;
+  assignedBankAccountId?: string | null;
+  approval_status?: string | null;
+  approvalStatus?: string | null;
+  payment_status?: string | null;
+  paymentStatus?: string | null;
+  date?: string | null;
+};
+
+type BankTransactionSummary = {
+  totalTransactions: number;
+  totalInflow: number;
+  totalOutflow: number;
+  netFlow: number;
+  pendingApprovalCount: number;
+  pendingPaymentCount: number;
+  lastTransactionDate: string | null;
+};
+
 const mapBankAccountRow = (row: BankAccountRow): BankAccount => ({
   id: row.id,
   organizationId: row.organization_id,
@@ -101,6 +127,9 @@ export function BankManagementScreen() {
   const [isResolvingOrganization, setIsResolvingOrganization] = useState(true);
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
   const [isCreatingAccount, setIsCreatingAccount] = useState(false);
+  const [isReconcilingBalances, setIsReconcilingBalances] = useState(false);
+  const [isLoadingTransactionSummaries, setIsLoadingTransactionSummaries] = useState(false);
+  const [bankTransactionSummaries, setBankTransactionSummaries] = useState<Record<string, BankTransactionSummary>>({});
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -241,9 +270,123 @@ export function BankManagementScreen() {
     }
   }, [effectiveOrganizationId]);
 
+  const fetchTransactionSummaries = useCallback(async () => {
+    if (!effectiveOrganizationId || bankAccounts.length === 0) {
+      setBankTransactionSummaries({});
+      return;
+    }
+
+    setIsLoadingTransactionSummaries(true);
+
+    try {
+      const accessToken = await getAccessToken();
+      const response = await fetch('/api/transactions', {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        cache: 'no-store',
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result?.error ?? 'Failed to load transaction summaries.');
+      }
+
+      const rows = (result.transactions ?? result.data ?? []) as TransactionRow[];
+      const summaryMap = new Map<string, BankTransactionSummary>();
+
+      for (const account of bankAccounts) {
+        summaryMap.set(account.id, {
+          totalTransactions: 0,
+          totalInflow: 0,
+          totalOutflow: 0,
+          netFlow: 0,
+          pendingApprovalCount: 0,
+          pendingPaymentCount: 0,
+          lastTransactionDate: null,
+        });
+      }
+
+      for (const row of rows) {
+        const bankAccountId =
+          row.bank_account_id ??
+          row.bankAccountId ??
+          row.assigned_bank_account_id ??
+          row.assignedBankAccountId ??
+          null;
+
+        if (!bankAccountId) {
+          continue;
+        }
+
+        const summary = summaryMap.get(bankAccountId);
+        if (!summary) {
+          continue;
+        }
+
+        const amount = Math.abs(Number(row.amount ?? 0));
+        const isIncome = Boolean(row.is_income ?? row.isIncome);
+        const approvalStatus = String(row.approval_status ?? row.approvalStatus ?? '').trim().toUpperCase();
+        const paymentStatus = String(row.payment_status ?? row.paymentStatus ?? '').trim().toUpperCase();
+
+        summary.totalTransactions += 1;
+        if (isIncome) {
+          summary.totalInflow += amount;
+          summary.netFlow += amount;
+        } else {
+          summary.totalOutflow += amount;
+          summary.netFlow -= amount;
+        }
+
+        if (approvalStatus.includes('PENDING')) {
+          summary.pendingApprovalCount += 1;
+        }
+
+        if (paymentStatus.includes('PENDING')) {
+          summary.pendingPaymentCount += 1;
+        }
+
+        const txnDate = typeof row.date === 'string' ? row.date : null;
+        if (txnDate && (!summary.lastTransactionDate || txnDate > summary.lastTransactionDate)) {
+          summary.lastTransactionDate = txnDate;
+        }
+      }
+
+      const nextSummaries: Record<string, BankTransactionSummary> = {};
+      for (const [accountId, summary] of summaryMap.entries()) {
+        nextSummaries[accountId] = summary;
+      }
+
+      setBankTransactionSummaries(nextSummaries);
+    } catch (err: any) {
+      setError(err?.message ?? 'Failed to load transaction summaries.');
+    } finally {
+      setIsLoadingTransactionSummaries(false);
+    }
+  }, [effectiveOrganizationId, bankAccounts]);
+
   useEffect(() => {
     void fetchBuckets();
   }, [fetchBuckets]);
+
+  useEffect(() => {
+    void fetchTransactionSummaries();
+  }, [fetchTransactionSummaries]);
+
+  useEffect(() => {
+    const refreshSummaries = () => {
+      void fetchTransactionSummaries();
+    };
+
+    window.addEventListener('finance:transactions-updated', refreshSummaries);
+    window.addEventListener('focus', refreshSummaries);
+
+    return () => {
+      window.removeEventListener('finance:transactions-updated', refreshSummaries);
+      window.removeEventListener('focus', refreshSummaries);
+    };
+  }, [fetchTransactionSummaries]);
 
   const handleAddBank = async () => {
     if (!effectiveOrganizationId || !formData.accountName.trim() || !formData.accountNumber.trim()) {
@@ -312,6 +455,37 @@ export function BankManagementScreen() {
       setBankAccounts((prev) => prev.filter((account) => account.id !== accountId));
     } catch (err: any) {
       setError(err?.message ?? 'Failed to delete bank account.');
+    }
+  };
+
+  const handleReconcileBalances = async () => {
+    if (!effectiveOrganizationId) {
+      return;
+    }
+
+    setIsReconcilingBalances(true);
+    setError(null);
+
+    try {
+      const accessToken = await getAccessToken();
+      const response = await fetch('/api/bank-accounts/reconcile', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result?.error ?? 'Failed to reconcile bank balances.');
+      }
+
+      await fetchBankAccounts();
+      window.dispatchEvent(new Event('finance:bank-accounts-updated'));
+    } catch (err: any) {
+      setError(err?.message ?? 'Failed to reconcile bank balances.');
+    } finally {
+      setIsReconcilingBalances(false);
     }
   };
 
@@ -386,6 +560,13 @@ export function BankManagementScreen() {
           <p className="text-muted-foreground">Manage your bank accounts and bucket allocations</p>
         </div>
         <div className="flex gap-3">
+          <button
+            onClick={() => void handleReconcileBalances()}
+            disabled={isReconcilingBalances || isResolvingOrganization || !effectiveOrganizationId}
+            className="flex items-center gap-2 px-4 py-2 border border-border rounded-lg hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isReconcilingBalances ? 'Recalculating...' : 'Recalculate Balance'}
+          </button>
           <button
             onClick={() => setShowTransferModal(true)}
             className="flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-lg hover:opacity-90"
@@ -537,6 +718,15 @@ export function BankManagementScreen() {
             {bankAccounts.map((account) => {
               const health = getAccountHealth(account);
               const linkedMappings = state.bankAccountMappings.filter((m) => m.bankAccountId === account.id);
+              const transactionSummary = bankTransactionSummaries[account.id] ?? {
+                totalTransactions: 0,
+                totalInflow: 0,
+                totalOutflow: 0,
+                netFlow: 0,
+                pendingApprovalCount: 0,
+                pendingPaymentCount: 0,
+                lastTransactionDate: null,
+              };
 
               return (
                 <div key={account.id} className={`border border-border rounded-lg p-6 ${health.bg} transition-all hover:shadow-md`}>
@@ -573,6 +763,51 @@ export function BankManagementScreen() {
                           <Trash2 size={16} />
                         </button>
                       </div>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-border/50 pt-3 mt-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-semibold text-muted-foreground">Transaction Summary</p>
+                      {isLoadingTransactionSummaries && (
+                        <span className="text-xs text-muted-foreground">Refreshing...</span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                      <div className="bg-background/60 rounded px-2 py-1.5">
+                        <p className="text-muted-foreground">Count</p>
+                        <p className="font-semibold text-foreground">{transactionSummary.totalTransactions.toLocaleString('en-IN')}</p>
+                      </div>
+                      <div className="bg-background/60 rounded px-2 py-1.5">
+                        <p className="text-muted-foreground">Inflow</p>
+                        <p className="font-semibold text-green-700">₹{Math.round(transactionSummary.totalInflow).toLocaleString('en-IN')}</p>
+                      </div>
+                      <div className="bg-background/60 rounded px-2 py-1.5">
+                        <p className="text-muted-foreground">Outflow</p>
+                        <p className="font-semibold text-red-700">₹{Math.round(transactionSummary.totalOutflow).toLocaleString('en-IN')}</p>
+                      </div>
+                      <div className="bg-background/60 rounded px-2 py-1.5">
+                        <p className="text-muted-foreground">Net Flow</p>
+                        <p className={`font-semibold ${transactionSummary.netFlow >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                          ₹{Math.round(transactionSummary.netFlow).toLocaleString('en-IN')}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-3 mt-2 text-xs">
+                      <span className="text-muted-foreground">
+                        Pending Approval: <span className="font-semibold text-foreground">{transactionSummary.pendingApprovalCount}</span>
+                      </span>
+                      <span className="text-muted-foreground">
+                        Pending Payment: <span className="font-semibold text-foreground">{transactionSummary.pendingPaymentCount}</span>
+                      </span>
+                      <span className="text-muted-foreground">
+                        Last Txn:{' '}
+                        <span className="font-semibold text-foreground">
+                          {transactionSummary.lastTransactionDate
+                            ? new Date(transactionSummary.lastTransactionDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+                            : '-'}
+                        </span>
+                      </span>
                     </div>
                   </div>
 

@@ -53,6 +53,7 @@ interface Transaction {
   // Source tracking
   sourceType?: string;
   sourceReferenceId?: string;
+  budgetId?: string;
 }
 
 interface Invoice {
@@ -70,6 +71,12 @@ interface BucketOption {
   currentBalance: number;
   monthlyTarget?: number;
   status: 'healthy' | 'attention' | 'critical';
+}
+
+interface BudgetOption {
+  id: string;
+  label: string;
+  status?: string;
 }
 
 type BankAccountOption = {
@@ -110,6 +117,7 @@ type AddTransactionFormData = {
   paymentMethod: string;
   assignedBankAccountId: string;
   invoice: string;
+  budgetId: string;
   notes: string;
 };
 
@@ -189,6 +197,14 @@ type TransactionRow = {
   source_type?: string | null;
   sourceReferenceId?: string | null;
   source_reference_id?: string | null;
+  budgetId?: string | null;
+  budget_id?: string | null;
+};
+
+type BudgetRow = {
+  id: string;
+  category?: string | null;
+  status?: string | null;
 };
 
 type BucketRow = {
@@ -250,16 +266,54 @@ const mapPaymentStatusLabel = (
   }
 };
 
+const mapApprovalStatusLabel = (
+  value: string | null | undefined
+): Transaction['approvalStatus'] | undefined => {
+  const token = normalizeStatusToken(value);
+  switch (token) {
+    case 'PENDING_APPROVAL':
+      return 'Pending Approval';
+    case 'APPROVED':
+    case 'APPROVED_FOR_PAYMENT':
+      return 'Approved';
+    case 'REJECTED':
+      return 'Rejected';
+    default:
+      return undefined;
+  }
+};
+
+const deriveApprovalStatus = (
+  approvalValue: string | null | undefined,
+  statusValue: string | null | undefined
+): Transaction['approvalStatus'] | undefined => {
+  const fromApproval = mapApprovalStatusLabel(approvalValue);
+  if (fromApproval) {
+    return fromApproval;
+  }
+
+  const statusToken = normalizeStatusToken(statusValue);
+  if (statusToken === 'APPROVED') {
+    return 'Approved';
+  }
+  if (statusToken === 'REJECTED') {
+    return 'Rejected';
+  }
+
+  return undefined;
+};
+
 const mapTransactionRow = (row: TransactionRow): Transaction => {
   const gstAmount = row.gstAmount ?? row.gst_amount ?? row.gstamount ?? 0;
   const taxableAmount = row.taxableAmount ?? row.taxable_amount ?? row.taxableamount ?? row.amount ?? 0;
+  const amount = Number(row.amount ?? 0);
   const status = row.status === 'Needs Info' || row.status === 'Action Required' ? row.status : 'Recorded';
 
   return {
     id: row.id,
     date: row.date ?? '',
     description: row.description ?? '',
-    amount: row.amount ?? 0,
+    amount: Number.isFinite(amount) ? amount : 0,
     isIncome: row.isIncome ?? row.is_income ?? row.isincome ?? true,
     accountingType: (row.accountingType ?? row.accounting_type ?? row.accountingtype ?? 'Revenue') as Transaction['accountingType'],
     subtype: row.subtype ?? 'Sales',
@@ -290,10 +344,14 @@ const mapTransactionRow = (row: TransactionRow): Transaction => {
     reconciliationStatus:
       (row.reconciliationStatus ?? row.reconciliation_status ?? undefined) as Transaction['reconciliationStatus'] | undefined,
     bankStatementReference: row.bankStatementReference ?? row.bank_statement_reference ?? undefined,
-    approvalStatus: (row.approvalStatus ?? row.approval_status ?? undefined) as Transaction['approvalStatus'] | undefined,
+    approvalStatus: deriveApprovalStatus(
+      (row.approvalStatus ?? row.approval_status ?? undefined) as string | undefined,
+      (row.status ?? undefined) as string | undefined
+    ),
     approvedBy: row.approvedBy ?? row.approved_by ?? undefined,
     sourceType: row.sourceType ?? row.source_type ?? undefined,
     sourceReferenceId: row.sourceReferenceId ?? row.source_reference_id ?? undefined,
+    budgetId: row.budgetId ?? row.budget_id ?? undefined,
   };
 };
 
@@ -331,6 +389,12 @@ const mapBankAccountRow = (row: BankAccountRow): BankAccountOption => {
     balance: row.balance ?? 0,
   };
 };
+
+const mapBudgetRow = (row: BudgetRow): BudgetOption => ({
+  id: row.id,
+  label: (row.category ?? 'Budget').trim() || 'Budget',
+  status: row.status ?? undefined,
+});
 
 const toDatabaseDate = (value: string) => {
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -518,7 +582,7 @@ const paymentStatusOptions = ['Recorded', 'Pending Payment', 'Partially Paid', '
 const reconciliationStatusOptions = ['Unreconciled', 'Reconciled', 'Flagged'];
 const paymentMethodOptions = ['Cash', 'Check', 'Wire Transfer', 'Credit Card', 'UPI', 'Cheque'];
 const approvalStatusOptions = ['Pending Approval', 'Approved', 'Rejected'];
-const approvalColumnOptions = ['Pending Approval', 'Approval', 'Rejected'];
+const approvalColumnOptions = ['Pending Approval', 'Approved', 'Rejected'];
 
 interface InboxScreenProps {
   onNavigate?: (nav: string) => void;
@@ -530,6 +594,7 @@ export function FinanceInboxScreen({ onNavigate }: InboxScreenProps) {
   const [buckets, setBuckets] = useState<BucketOption[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccountOption[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [budgetOptions, setBudgetOptions] = useState<BudgetOption[]>([]);
 
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [editFormData, setEditFormData] = useState<Partial<Transaction> | null>(null);
@@ -579,6 +644,7 @@ export function FinanceInboxScreen({ onNavigate }: InboxScreenProps) {
     paymentMethod: '',
     assignedBankAccountId: '',
     invoice: '',
+    budgetId: '',
     notes: '',
   });
 
@@ -712,6 +778,18 @@ export function FinanceInboxScreen({ onNavigate }: InboxScreenProps) {
     void fetchTransactions();
   }, [fetchTransactions]);
 
+  useEffect(() => {
+    const handleTransactionsUpdated = () => {
+      void fetchTransactions();
+    };
+
+    window.addEventListener('finance:transactions-updated', handleTransactionsUpdated);
+
+    return () => {
+      window.removeEventListener('finance:transactions-updated', handleTransactionsUpdated);
+    };
+  }, [fetchTransactions]);
+
   const fetchBuckets = useCallback(async () => {
     if (!effectiveOrganizationId) {
       setBuckets([]);
@@ -833,6 +911,46 @@ export function FinanceInboxScreen({ onNavigate }: InboxScreenProps) {
     void fetchInvoices();
   }, [fetchInvoices]);
 
+  const fetchBudgets = useCallback(async () => {
+    if (!effectiveOrganizationId) {
+      setBudgetOptions([]);
+      return;
+    }
+
+    setError(null);
+
+    try {
+      const accessToken = await getAccessToken();
+      const response = await fetch('/api/budgets', {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'x-access-token': accessToken,
+          'x-user-id': currentUserId ?? '',
+          'x-organization-id': effectiveOrganizationId,
+        },
+        cache: 'no-store',
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result?.error ?? 'Failed to load budgets.');
+      }
+
+      const mapped = ((result.budgets ?? []) as BudgetRow[])
+        .map(mapBudgetRow)
+        .filter((budget) => (budget.status ?? 'ACTIVE').toUpperCase() !== 'CLOSED');
+
+      setBudgetOptions(mapped);
+    } catch (err: any) {
+      setError(err?.message ?? 'Failed to load budgets.');
+    }
+  }, [currentUserId, effectiveOrganizationId]);
+
+  useEffect(() => {
+    void fetchBudgets();
+  }, [fetchBudgets]);
+
   const linkedInvoiceOptions =
     addFormData.accountingType === 'Expense' || addFormData.accountingType === 'Revenue'
       ? invoices.filter((invoice) => invoice.type === addFormData.accountingType)
@@ -871,6 +989,17 @@ export function FinanceInboxScreen({ onNavigate }: InboxScreenProps) {
     }
   }, [addFormData.invoice, linkedInvoiceOptions]);
 
+  useEffect(() => {
+    if (!addFormData.budgetId) {
+      return;
+    }
+
+    const budgetStillExists = budgetOptions.some((budget) => budget.id === addFormData.budgetId);
+    if (!budgetStillExists) {
+      setAddFormData((prev) => ({ ...prev, budgetId: '' }));
+    }
+  }, [addFormData.budgetId, budgetOptions]);
+
   // Calculate allocation summary
   const getFilteredTransactions = () => {
     return transactions.filter(t => {
@@ -882,12 +1011,24 @@ export function FinanceInboxScreen({ onNavigate }: InboxScreenProps) {
     });
   };
 
+  const isApprovedAndPaid = (txn: Transaction) => {
+    const approvalStatus = String(txn.approvalStatus ?? '').trim().toUpperCase();
+    const paymentStatus = String(txn.paymentStatus ?? '').trim().toUpperCase();
+    return approvalStatus === 'APPROVED' && paymentStatus === 'PAID';
+  };
+
   const calculateAllocationSummary = () => {
-    const filtered = getFilteredTransactions();
-    const total = filtered.reduce((sum, t) => sum + t.amount, 0);
-    const allocated = filtered.filter(t => t.allocationStatus === 'Allocated').reduce((sum, t) => sum + t.amount, 0);
-    const partiallyAllocated = filtered.filter(t => t.allocationStatus === 'Partially Allocated').reduce((sum, t) => sum + t.amount, 0);
-    const unallocated = filtered.filter(t => t.allocationStatus === 'Unallocated').reduce((sum, t) => sum + t.amount, 0);
+    const filtered = getFilteredTransactions().filter(isApprovedAndPaid);
+    const total = filtered.reduce((sum, t) => sum + Number(t.amount ?? 0), 0);
+    const allocated = filtered
+      .filter(t => t.allocationStatus === 'Allocated')
+      .reduce((sum, t) => sum + Number(t.amount ?? 0), 0);
+    const partiallyAllocated = filtered
+      .filter(t => t.allocationStatus === 'Partially Allocated')
+      .reduce((sum, t) => sum + Number(t.amount ?? 0), 0);
+    const unallocated = filtered
+      .filter(t => t.allocationStatus === 'Unallocated')
+      .reduce((sum, t) => sum + Number(t.amount ?? 0), 0);
     
     return {
       total,
@@ -957,6 +1098,7 @@ export function FinanceInboxScreen({ onNavigate }: InboxScreenProps) {
       payment_method: transaction.paymentMethod || null,
       bank_account_id: transaction.assignedBankAccountId || null,
       invoice_reference: transaction.invoice || null,
+      budget_id: transaction.budgetId || null,
       status: transaction.status,
       gst_taxable: transaction.gstSplit?.taxable ?? transaction.amount,
       gst_amount: effectiveGstAmount,
@@ -1006,7 +1148,8 @@ export function FinanceInboxScreen({ onNavigate }: InboxScreenProps) {
 
   const persistPaymentStatus = async (
     transactionId: string,
-    paymentStatus: NonNullable<Transaction['paymentStatus']>
+    paymentStatus: NonNullable<Transaction['paymentStatus']>,
+    invoiceRef?: string
   ) => {
     if (!effectiveOrganizationId) {
       return null;
@@ -1029,6 +1172,8 @@ export function FinanceInboxScreen({ onNavigate }: InboxScreenProps) {
         transaction: {
           id: transactionId,
           payment_status: paymentStatus,
+          invoice_reference: invoiceRef ?? null,
+          invoiceId: invoiceRef ?? null,
         },
       }),
     });
@@ -1036,6 +1181,44 @@ export function FinanceInboxScreen({ onNavigate }: InboxScreenProps) {
     const result = await response.json();
     if (!response.ok) {
       throw new Error(result?.error ?? 'Failed to update payment status.');
+    }
+
+    return result.transaction ? mapTransactionRow(result.transaction as TransactionRow) : null;
+  };
+
+  const persistApprovalStatus = async (
+    transactionId: string,
+    approvalStatus: NonNullable<Transaction['approvalStatus']>
+  ) => {
+    if (!effectiveOrganizationId) {
+      return null;
+    }
+
+    const accessToken = await getAccessToken();
+    const response = await fetch('/api/transactions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+        'x-access-token': accessToken,
+        'x-user-id': currentUserId ?? '',
+        'x-organization-id': effectiveOrganizationId,
+      },
+      body: JSON.stringify({
+        accessToken,
+        userId: currentUserId,
+        organizationId: effectiveOrganizationId,
+        transaction: {
+          id: transactionId,
+          approval_status: approvalStatus,
+          approved_by: currentUserId ?? null,
+        },
+      }),
+    });
+
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result?.error ?? 'Failed to update approval status.');
     }
 
     return result.transaction ? mapTransactionRow(result.transaction as TransactionRow) : null;
@@ -1109,6 +1292,7 @@ export function FinanceInboxScreen({ onNavigate }: InboxScreenProps) {
       paymentMethod: '',
       assignedBankAccountId: '',
       invoice: '',
+      budgetId: '',
       notes: '',
     });
   };
@@ -1120,6 +1304,7 @@ export function FinanceInboxScreen({ onNavigate }: InboxScreenProps) {
 
   const notifyTransactionsUpdated = () => {
     window.dispatchEvent(new Event('finance:transactions-updated'));
+    window.dispatchEvent(new Event('finance:bank-accounts-updated'));
   };
   
 
@@ -1144,7 +1329,8 @@ export function FinanceInboxScreen({ onNavigate }: InboxScreenProps) {
         );
       });
 
-      const persisted = await persistPaymentStatus(transactionId, newStatus);
+      const transaction = transactions.find((t) => t.id === transactionId);
+      const persisted = await persistPaymentStatus(transactionId, newStatus, transaction?.invoice);
       if (persisted) {
         setTransactions((prev) =>
           prev.map((t) => (t.id === transactionId ? { ...t, ...persisted } : t))
@@ -1178,10 +1364,7 @@ export function FinanceInboxScreen({ onNavigate }: InboxScreenProps) {
       return;
     }
 
-    const mappedStatus =
-      selectedStatus === 'Approval'
-        ? 'Approved'
-        : (selectedStatus as NonNullable<Transaction['approvalStatus']>);
+    const mappedStatus = selectedStatus as NonNullable<Transaction['approvalStatus']>;
 
     const transactionToUpdate = transactions.find((t) => t.id === transactionId);
     if (!transactionToUpdate) {
@@ -1205,10 +1388,16 @@ export function FinanceInboxScreen({ onNavigate }: InboxScreenProps) {
         prev.map((t) => (t.id === transactionId ? updatedTransaction : t))
       );
 
-      const persistedTransaction = await persistTransaction(updatedTransaction, transactionId);
+      const persistedTransaction = await persistApprovalStatus(transactionId, mappedStatus);
       if (persistedTransaction) {
+        const mergedPersisted: Transaction = {
+          ...updatedTransaction,
+          ...persistedTransaction,
+          approvalStatus: persistedTransaction.approvalStatus ?? updatedTransaction.approvalStatus,
+          approvedBy: persistedTransaction.approvedBy ?? updatedTransaction.approvedBy,
+        };
         setTransactions((prev) =>
-          prev.map((t) => (t.id === transactionId ? { ...updatedTransaction, ...persistedTransaction } : t))
+          prev.map((t) => (t.id === transactionId ? mergedPersisted : t))
         );
       }
 
@@ -1430,6 +1619,7 @@ export function FinanceInboxScreen({ onNavigate }: InboxScreenProps) {
       accountingType: addFormData.accountingType,
       subtype: addFormData.subtype,
       invoice: addFormData.invoice || '',
+      budgetId: addFormData.accountingType === 'Expense' ? addFormData.budgetId || undefined : undefined,
       adjustment: 'Full',
       gstSplit: { taxable: parsedAmount, gst: 0 },
       notes: addFormData.notes,
@@ -1438,7 +1628,7 @@ export function FinanceInboxScreen({ onNavigate }: InboxScreenProps) {
       paymentStatus: 'Recorded',
       allocationStatus: 'Unallocated',
       bucketId: addFormData.bucketId,
-      assignedBankAccountId: addFormData.assignedBankAccountId || undefined,
+      assignedBankAccountId: undefined,
       vendorCustomerName: addFormData.vendorCustomerName || undefined,
       paymentMethod: (addFormData.paymentMethod || undefined) as Transaction['paymentMethod'] | undefined,
     };
@@ -1810,7 +2000,7 @@ export function FinanceInboxScreen({ onNavigate }: InboxScreenProps) {
                 {isAccountant ? (
                   <div>
                     <CompactDropdown
-                      value={(txn.approvalStatus || 'Pending Approval') === 'Approved' ? 'Approval' : (txn.approvalStatus || 'Pending Approval')}
+                      value={normalizeStatusToken(txn.approvalStatus) === 'APPROVED' ? 'Approved' : (txn.approvalStatus || 'Pending Approval')}
                       onChange={(newStatus) => handleApprovalStatusChange(txn.id, newStatus)}
                       options={approvalColumnOptions}
                       txnId={txn.id}
@@ -1820,13 +2010,13 @@ export function FinanceInboxScreen({ onNavigate }: InboxScreenProps) {
                 ) : (
                   <div>
                     <span className={`px-2 py-1 rounded text-xs font-medium ${
-                      (txn.approvalStatus || 'Pending Approval') === 'Approved'
+                      normalizeStatusToken(txn.approvalStatus) === 'APPROVED'
                         ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
-                        : (txn.approvalStatus || 'Pending Approval') === 'Rejected'
+                        : normalizeStatusToken(txn.approvalStatus) === 'REJECTED'
                           ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
                           : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
                     }`}>
-                      {(txn.approvalStatus || 'Pending Approval') === 'Approved' ? 'Approval' : (txn.approvalStatus || 'Pending Approval')}
+                      {normalizeStatusToken(txn.approvalStatus) === 'APPROVED' ? 'Approved' : (txn.approvalStatus || 'Pending Approval')}
                     </span>
                   </div>
                 )}
@@ -1897,7 +2087,7 @@ export function FinanceInboxScreen({ onNavigate }: InboxScreenProps) {
           return (
             <div className="flex gap-6">
               <div className="flex-1">
-                <p className="text-xs text-muted-foreground mb-1">Total Transactions</p>
+                <p className="text-xs text-muted-foreground mb-1">Total Transactions (Approved + Paid)</p>
                 <p className="text-lg font-semibold text-foreground">₹{summary.total.toLocaleString('en-IN')}</p>
               </div>
               <div className="flex-1">
@@ -1996,6 +2186,7 @@ export function FinanceInboxScreen({ onNavigate }: InboxScreenProps) {
                         subtype: subtypeOptions[nextType]?.[0] || '',
                         isIncome: nextType !== 'Expense',
                         invoice: '',
+                        budgetId: nextType === 'Expense' ? addFormData.budgetId : '',
                       });
                     }}
                     className="w-full px-3 py-2 bg-background border border-border rounded text-sm"
@@ -2064,20 +2255,6 @@ export function FinanceInboxScreen({ onNavigate }: InboxScreenProps) {
                 </div>
 
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-2 block">Bank Account (Optional)</label>
-                  <select
-                    value={addFormData.assignedBankAccountId}
-                    onChange={(e) => setAddFormData({ ...addFormData, assignedBankAccountId: e.target.value })}
-                    className="w-full px-3 py-2 bg-background border border-border rounded text-sm"
-                  >
-                    <option value="">Select Bank Account</option>
-                    {bankAccounts.map((acc) => (
-                      <option key={acc.id} value={acc.id}>{acc.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
                   <label className="text-xs font-medium text-muted-foreground mb-2 block">Linked Invoice (Optional)</label>
                   <select
                     value={addFormData.invoice}
@@ -2093,6 +2270,22 @@ export function FinanceInboxScreen({ onNavigate }: InboxScreenProps) {
                     ))}
                   </select>
                 </div>
+
+                {addFormData.accountingType === 'Expense' && (
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground mb-2 block">Budget (Optional)</label>
+                    <select
+                      value={addFormData.budgetId}
+                      onChange={(e) => setAddFormData({ ...addFormData, budgetId: e.target.value })}
+                      className="w-full px-3 py-2 bg-background border border-border rounded text-sm"
+                    >
+                      <option value="">Unassigned</option>
+                      {budgetOptions.map((budget) => (
+                        <option key={budget.id} value={budget.id}>{budget.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <div className="md:col-span-2">
                   <label className="text-xs font-medium text-muted-foreground mb-2 block">Notes (Optional)</label>
@@ -2281,6 +2474,7 @@ export function FinanceInboxScreen({ onNavigate }: InboxScreenProps) {
                             ? selectedTransactionForDrawer.subtype
                             : subtypeOptions[nextType]?.[0] || '',
                         isIncome: nextType !== 'Expense',
+                        budgetId: nextType === 'Expense' ? selectedTransactionForDrawer.budgetId : undefined,
                       });
                     }}
                     className="w-full px-3 py-2 bg-background border border-border rounded text-sm"
@@ -2309,6 +2503,27 @@ export function FinanceInboxScreen({ onNavigate }: InboxScreenProps) {
                     ))}
                   </select>
                 </div>
+
+                {selectedTransactionForDrawer.accountingType === 'Expense' && (
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground mb-2 block">Budget</label>
+                    <select
+                      value={selectedTransactionForDrawer.budgetId || ''}
+                      onChange={(e) =>
+                        setSelectedTransactionForDrawer({
+                          ...selectedTransactionForDrawer,
+                          budgetId: e.target.value || undefined,
+                        })
+                      }
+                      className="w-full px-3 py-2 bg-background border border-border rounded text-sm"
+                    >
+                      <option value="">Unassigned</option>
+                      {budgetOptions.map((budget) => (
+                        <option key={budget.id} value={budget.id}>{budget.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
               {/* GST Section */}

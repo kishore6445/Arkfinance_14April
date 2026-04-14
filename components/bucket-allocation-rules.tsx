@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Plus, Trash2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useAppState } from '@/context/app-state';
 
 interface AllocationRule {
   id: string;
@@ -12,7 +13,11 @@ interface AllocationRule {
 }
 
 interface BucketAllocationRulesProps {
-  bucketId: string;
+  bucket: {
+    id: string;
+    name: string;
+    currentBalance: number;
+  };
   onBack: () => void;
 }
 
@@ -24,33 +29,60 @@ const subtypesByType: Record<string, string[]> = {
   Liability: ['Accounts Payable', 'Loans', 'GST Payable', 'Other'],
 };
 
-// Sample bucket data
-const bucketData: Record<string, { name: string; currentBalance: number }> = {
-  '1': { name: 'Operations', currentBalance: 145000 },
-  '2': { name: 'Emergency Reserve', currentBalance: 245000 },
-  '3': { name: 'Tax Liability', currentBalance: 67500 },
-  '4': { name: 'Owner Distributions', currentBalance: 95000 },
-  '5': { name: 'Growth Fund', currentBalance: 180000 },
-};
+export function BucketAllocationRules({ bucket, onBack }: BucketAllocationRulesProps) {
+  const { state } = useAppState();
 
-// Sample recent transactions for preview
-const sampleRecentTransactions = [
-  { date: 'Feb 4', description: 'Acme Studios - Project Delivery', type: 'Revenue', subtype: 'Sales', amount: 45000 },
-  { date: 'Feb 3', description: 'AWS Services - Monthly Bill', type: 'Expense', subtype: 'Operating', amount: 8500 },
-  { date: 'Feb 3', description: 'Salary - Priya Sharma', type: 'Expense', subtype: 'Salaries', amount: 65000 },
-];
+  const recentTransactions = useMemo(() => {
+    return state.transactions
+      .filter((txn) => String((txn as any).bucketId ?? (txn as any).bucket_id ?? '') === bucket.id)
+      .sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime())
+      .slice(0, 12)
+      .map((txn) => ({
+        date: new Date(txn.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+        description: txn.description,
+        type: txn.accountingType,
+        subtype: txn.subtype,
+        amount: Number(txn.amount ?? 0),
+      }));
+  }, [bucket.id, state.transactions]);
 
-export function BucketAllocationRules({ bucketId, onBack }: BucketAllocationRulesProps) {
-  const bucket = bucketData[bucketId] || { name: 'Unknown', currentBalance: 0 };
-  
-  const [rules, setRules] = useState<AllocationRule[]>([
-    { id: '1', type: 'Revenue', subtype: 'Sales', percentage: 25 },
-    { id: '2', type: 'Revenue', subtype: 'Service Income', percentage: 15 },
-  ]);
+  const suggestedRules = useMemo<AllocationRule[]>(() => {
+    const uniqueKeys = new Map<string, { type: string; subtype: string }>();
+
+    for (const txn of recentTransactions) {
+      const key = `${txn.type}::${txn.subtype}`;
+      if (!uniqueKeys.has(key)) {
+        uniqueKeys.set(key, { type: txn.type, subtype: txn.subtype });
+      }
+    }
+
+    const uniqueRules = Array.from(uniqueKeys.values());
+    if (uniqueRules.length === 0) {
+      return [];
+    }
+
+    const base = Math.floor(100 / uniqueRules.length);
+    const remainder = 100 - base * uniqueRules.length;
+
+    return uniqueRules.map((rule, index) => ({
+      id: `rule-${index + 1}`,
+      type: rule.type,
+      subtype: rule.subtype,
+      percentage: base + (index === 0 ? remainder : 0),
+    }));
+  }, [recentTransactions]);
+
+  const [rules, setRules] = useState<AllocationRule[]>([]);
 
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [editFormData, setEditFormData] = useState<Partial<AllocationRule> | null>(null);
   const [showConfirmation, setShowConfirmation] = useState(false);
+
+  useEffect(() => {
+    setRules(suggestedRules);
+    setEditingRuleId(null);
+    setEditFormData(null);
+  }, [bucket.id, suggestedRules]);
 
   const totalPercentage = rules.reduce((sum, rule) => sum + rule.percentage, 0);
   const isValid = totalPercentage === 100;
@@ -93,13 +125,11 @@ export function BucketAllocationRules({ bucketId, onBack }: BucketAllocationRule
 
   const confirmSave = () => {
     setShowConfirmation(false);
-    // In a real app, this would persist to the database
-    alert('Allocation rules saved! These will apply to future transactions only.');
   };
 
   // Calculate preview allocation
   const calculatePreviewAllocation = () => {
-    return sampleRecentTransactions.map(txn => {
+    return recentTransactions.map(txn => {
       const matchingRule = rules.find(r => r.type === txn.type && r.subtype === txn.subtype);
       const allocated = matchingRule ? (txn.amount * matchingRule.percentage) / 100 : 0;
       return {
@@ -153,7 +183,7 @@ export function BucketAllocationRules({ bucketId, onBack }: BucketAllocationRule
               </div>
 
               {rules.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4">No rules defined yet. Add one to get started.</p>
+                <p className="text-sm text-muted-foreground py-4">No linked transactions were found for this bucket yet. Add transactions first or create a manual rule.</p>
               ) : (
                 <div className="space-y-3">
                   {rules.map((rule) => (
@@ -280,7 +310,7 @@ export function BucketAllocationRules({ bucketId, onBack }: BucketAllocationRule
 
               {/* Safety Note */}
               <p className="text-xs text-muted-foreground pt-4 border-t border-border">
-                These rules apply to <strong>future transactions only</strong>. Existing allocations won't change retroactively.
+                This screen previews rules from live bucket transactions. Rule persistence is not connected yet.
               </p>
             </div>
           </div>
@@ -302,6 +332,12 @@ export function BucketAllocationRules({ bucketId, onBack }: BucketAllocationRule
                 </div>
 
                 {/* Rows */}
+                {previewData.length === 0 && (
+                  <div className="px-4 py-6 text-sm text-muted-foreground">
+                    No recent bucket-linked transactions are available for preview.
+                  </div>
+                )}
+
                 {previewData.map((txn, idx) => (
                   <div
                     key={idx}
@@ -330,7 +366,7 @@ export function BucketAllocationRules({ bucketId, onBack }: BucketAllocationRule
                     Total Allocated
                   </div>
                   <div className="w-28 flex-shrink-0 text-right">
-                    <p className="text-sm text-foreground">₹{sampleRecentTransactions.reduce((s, t) => s + t.amount, 0).toLocaleString()}</p>
+                    <p className="text-sm text-foreground">₹{recentTransactions.reduce((sum, txn) => sum + txn.amount, 0).toLocaleString()}</p>
                   </div>
                   <div className="w-28 flex-shrink-0 text-right">
                     <p className="text-sm text-accent font-bold">₹{Math.round(totalPreviewAllocation).toLocaleString()}</p>
@@ -339,7 +375,7 @@ export function BucketAllocationRules({ bucketId, onBack }: BucketAllocationRule
               </div>
 
               <p className="text-xs text-muted-foreground">
-                Based on recent transactions, these rules would allocate <strong>₹{Math.round(totalPreviewAllocation).toLocaleString()}</strong> to {bucket.name} this month.
+                Based on live linked transactions, these rules would allocate <strong>₹{Math.round(totalPreviewAllocation).toLocaleString()}</strong> to {bucket.name} in the current preview.
               </p>
             </div>
           </div>
@@ -353,7 +389,7 @@ export function BucketAllocationRules({ bucketId, onBack }: BucketAllocationRule
             <div className="px-6 py-4 border-b border-border space-y-3">
               <h2 className="text-lg font-semibold text-foreground">Confirm Rule Changes</h2>
               <p className="text-sm text-foreground">
-                These new allocation rules will apply to <strong>future transactions only</strong>. Existing transactions won't be recalculated.
+                This confirms the current preview only. Persistence for bucket rules is not wired to the database yet.
               </p>
             </div>
 
@@ -365,7 +401,7 @@ export function BucketAllocationRules({ bucketId, onBack }: BucketAllocationRule
                 Cancel
               </button>
               <Button onClick={confirmSave}>
-                Confirm & Save
+                Confirm
               </Button>
             </div>
           </div>

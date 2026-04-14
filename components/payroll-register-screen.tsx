@@ -127,6 +127,8 @@ export function PayrollRegisterScreen() {
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [isSavingEntry, setIsSavingEntry] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [formSuccess, setFormSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchEmployees = async () => {
@@ -153,11 +155,14 @@ export function PayrollRegisterScreen() {
         const mapped = rows.map((row) => {
           const firstName = row.first_name?.trim() ?? '';
           const lastName = row.last_name?.trim() ?? '';
+          const resolvedDesignation =
+            row.designation?.trim() ||
+            (row.designation_id && row.designation_id.trim().length > 0 ? row.designation_id : 'N/A');
           return {
             id: row.id,
             employeeCode: row.employee_code?.trim() || `EMP-${row.id.slice(0, 6).toUpperCase()}`,
             fullName: `${firstName} ${lastName}`.trim() || 'Unnamed Employee',
-            designation: row.designation_id ?? row.designation ?? 'N/A',
+            designation: resolvedDesignation,
             bankAccount: row.bank_account?.accountNumber ?? '',
             baseCtc: Number(row.base_ctc ?? 0),
           } satisfies EmployeeOption;
@@ -166,6 +171,7 @@ export function PayrollRegisterScreen() {
         setEmployees(mapped);
       } catch {
         setEmployees([]);
+        setFormError('Unable to load employees. Please refresh and try again.');
       } finally {
         setLoadingEmployees(false);
       }
@@ -276,7 +282,16 @@ export function PayrollRegisterScreen() {
   };
 
   const handleAddEntry = async () => {
+    setFormError(null);
+    setFormSuccess(null);
+
     if (!entryInput.employeeId.trim() || !entryInput.employeeName.trim() || !entryInput.designation.trim()) {
+      setFormError('Please select an employee before adding to register.');
+      return;
+    }
+
+    if (!selectedMonth.trim()) {
+      setFormError('Please select a payroll month.');
       return;
     }
 
@@ -285,7 +300,7 @@ export function PayrollRegisterScreen() {
       const accessToken = await getAccessToken();
       const headers: HeadersInit = {
         'Content-Type': 'application/json',
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}`, 'x-access-token': accessToken } : {}),
       };
 
       const response = await fetch('/api/payroll-register', {
@@ -315,6 +330,8 @@ export function PayrollRegisterScreen() {
       });
 
       if (!response.ok) {
+        const payload = await response.json().catch(() => ({ error: 'Failed to add payroll register entry' }));
+        setFormError(payload.error ?? 'Failed to add payroll register entry.');
         return;
       }
 
@@ -345,6 +362,9 @@ export function PayrollRegisterScreen() {
 
       setPayrollRegister((prev) => [newEntry, ...prev]);
       setEntryInput(DEFAULT_PAYROLL_INPUT);
+      setFormSuccess('Employee added to payroll register successfully.');
+    } catch (error: any) {
+      setFormError(error?.message ?? 'Failed to add payroll register entry.');
     } finally {
       setIsSavingEntry(false);
     }
@@ -412,6 +432,16 @@ export function PayrollRegisterScreen() {
           <p className="text-sm text-muted-foreground mt-1">
             PF is calculated as 12% of Basic+DA. ESI is 0.75% of Gross when Gross is up to ₹21,000. IT is based on the entered percentage.
           </p>
+          {formError && (
+            <div className="mt-3 rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {formError}
+            </div>
+          )}
+          {formSuccess && (
+            <div className="mt-3 rounded border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-700">
+              {formSuccess}
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

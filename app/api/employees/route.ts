@@ -266,3 +266,69 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
+
+export async function PUT(request: Request) {
+  try {
+    const authorized = await getAuthorizedProfile(request)
+    if ('error' in authorized) return authorized.error
+
+    const { admin, profile } = authorized
+    const organizationId = profile.organization_id
+    if (!organizationId) {
+      return NextResponse.json({ error: 'No organization linked to this user' }, { status: 400 })
+    }
+
+    const body = (await request.json()) as EmployeeRequest
+    if (!body.id) {
+      return NextResponse.json({ error: 'Employee id is required' }, { status: 400 })
+    }
+
+    if (!body.firstName?.trim() || !body.lastName?.trim() || !body.email?.trim()) {
+      return NextResponse.json({ error: 'firstName, lastName and email are required' }, { status: 400 })
+    }
+
+    const { data: existing, error: fetchError } = await admin
+      .from('employees')
+      .select('id, organization_id, employee_code, created_at')
+      .eq('id', body.id)
+      .maybeSingle()
+
+    if (fetchError) {
+      return NextResponse.json({ error: fetchError.message }, { status: 400 })
+    }
+
+    if (!existing || existing.organization_id !== organizationId) {
+      return NextResponse.json({ error: 'Employee not found' }, { status: 404 })
+    }
+
+    const payload = {
+      first_name: body.firstName.trim(),
+      last_name: body.lastName.trim(),
+      email: body.email.trim(),
+      phone: body.phone ?? null,
+      dob: body.dob ?? null,
+      gender: body.gender ?? 'M',
+      joining_date: body.joiningDate ?? null,
+      designation: body.designationId ?? null,
+      status: body.status ?? 'Active',
+      base_ctc: body.baseCtc ?? 0,
+      updated_at: new Date().toISOString(),
+    }
+
+    const { data, error } = await admin
+      .from('employees')
+      .update(payload)
+      .eq('id', body.id)
+      .select('*')
+      .single()
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
+    return NextResponse.json({ employee: data }, { status: 200 })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unexpected server error'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}

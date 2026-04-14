@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { FileText, Play, Download, CheckCircle, Clock } from 'lucide-react';
+import { FileText, Play, Download, CheckCircle, Clock, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getSupabaseClient } from '@/lib/supabase/client';
 import {
@@ -21,7 +21,7 @@ interface PayrollRun {
   totalGross: number;
   totalDeductions: number;
   totalNet: number;
-  status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'PROCESSED' | 'REJECTED';
+  status: 'DRAFT' | 'APPROVED' | 'PROCESSED' | 'REJECTED';
   approvedBy?: string;
   approvalDate?: string;
   processedDate?: string;
@@ -98,6 +98,7 @@ export function PayrollProcessingScreen() {
   const [selectedRun, setSelectedRun] = useState<PayrollRun | null>(null);
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
 
   useEffect(() => {
     const loadPayrollRuns = async () => {
@@ -194,11 +195,40 @@ export function PayrollProcessingScreen() {
   const selectedMonthSummary = useMemo(() => {
     const totalEmployees = selectedMonthEntries.length;
     const alreadyProcessed = selectedMonthEntries.filter((entry) => entry.transferStatus === 'Processed').length;
+    const processedAmount = selectedMonthEntries
+      .filter((entry) => entry.transferStatus === 'Processed')
+      .reduce((sum, entry) => sum + entry.netSalary, 0);
     const totalGross = selectedMonthEntries.reduce((sum, entry) => sum + entry.grossSalary, 0);
     const totalDeductions = selectedMonthEntries.reduce((sum, entry) => sum + entry.totalDeductions, 0);
     const totalNet = selectedMonthEntries.reduce((sum, entry) => sum + entry.netSalary, 0);
-    return { totalEmployees, alreadyProcessed, totalGross, totalDeductions, totalNet };
+    return { totalEmployees, alreadyProcessed, processedAmount, totalGross, totalDeductions, totalNet };
   }, [selectedMonthEntries]);
+
+  const pendingMonthEntries = useMemo(
+    () => selectedMonthEntries.filter((entry) => entry.transferStatus === 'Pending'),
+    [selectedMonthEntries]
+  );
+
+  const pendingMonthSummary = useMemo(() => {
+    const totalEmployees = pendingMonthEntries.length;
+    const totalGross = pendingMonthEntries.reduce((sum, entry) => sum + entry.grossSalary, 0);
+    const totalDeductions = pendingMonthEntries.reduce((sum, entry) => sum + entry.totalDeductions, 0);
+    const totalNet = pendingMonthEntries.reduce((sum, entry) => sum + entry.netSalary, 0);
+    return { totalEmployees, totalGross, totalDeductions, totalNet };
+  }, [pendingMonthEntries]);
+
+  const selectedPendingEntries = useMemo(
+    () => pendingMonthEntries.filter((entry) => selectedEntryIds.includes(entry.id)),
+    [pendingMonthEntries, selectedEntryIds]
+  );
+
+  const selectedPendingSummary = useMemo(() => {
+    const totalEmployees = selectedPendingEntries.length;
+    const totalGross = selectedPendingEntries.reduce((sum, entry) => sum + entry.grossSalary, 0);
+    const totalDeductions = selectedPendingEntries.reduce((sum, entry) => sum + entry.totalDeductions, 0);
+    const totalNet = selectedPendingEntries.reduce((sum, entry) => sum + entry.netSalary, 0);
+    return { totalEmployees, totalGross, totalDeductions, totalNet };
+  }, [selectedPendingEntries]);
 
   const currentMonthRunPreview = useMemo<PayrollRun>(() => {
     const status: PayrollRun['status'] =
@@ -206,7 +236,7 @@ export function PayrollProcessingScreen() {
         ? 'DRAFT'
         : selectedMonthSummary.alreadyProcessed === selectedMonthSummary.totalEmployees
           ? 'PROCESSED'
-          : 'SUBMITTED';
+          : 'DRAFT';
 
     return {
       id: `preview-${selectedMonth}`,
@@ -243,10 +273,10 @@ export function PayrollProcessingScreen() {
   const totalEmployees = payrollRuns.reduce((max, run) => Math.max(max, run.totalEmployees), 0);
   const lastPayroll = payrollRuns[0]?.payrollMonth ?? '-';
   const totalProcessed = payrollRuns.reduce((sum, run) => sum + run.totalNet, 0);
-  const pendingApprovals = payrollRuns.filter((run) => run.status === 'PROCESSED').length;
+  const pendingApprovals = payrollRuns.filter((run) => run.status === 'DRAFT').length;
 
   const handleProcessPayroll = async () => {
-    if (selectedMonthSummary.totalEmployees === 0) {
+    if (selectedPendingSummary.totalEmployees === 0) {
       return;
     }
 
@@ -272,6 +302,7 @@ export function PayrollProcessingScreen() {
         body: JSON.stringify({
           action: 'process-month',
           payrollMonth: selectedMonth,
+          selectedEntryIds: selectedPendingEntries.map((entry) => entry.id),
         }),
       });
 
@@ -287,11 +318,11 @@ export function PayrollProcessingScreen() {
           payrollMonth: selectedMonth,
           payrollDate: processedDate,
           status: 'PROCESSED',
-          totalEmployees: selectedMonthSummary.totalEmployees,
-          processedEmployees: selectedMonthSummary.totalEmployees,
-          totalGross: selectedMonthSummary.totalGross,
-          totalDeductions: selectedMonthSummary.totalDeductions,
-          totalNet: selectedMonthSummary.totalNet,
+          totalEmployees: selectedPendingSummary.totalEmployees,
+          processedEmployees: selectedPendingSummary.totalEmployees,
+          totalGross: selectedPendingSummary.totalGross,
+          totalDeductions: selectedPendingSummary.totalDeductions,
+          totalNet: selectedPendingSummary.totalNet,
           processedDate,
         }),
       });
@@ -328,8 +359,9 @@ export function PayrollProcessingScreen() {
       return;
     }
 
+    const selectedIds = new Set(selectedPendingEntries.map((entry) => entry.id));
     const refreshedEntries = registerEntries.map((entry) => {
-      if (entry.payrollMonth !== selectedMonth || entry.transferStatus === 'Cancelled') {
+      if (!selectedIds.has(entry.id) || entry.payrollMonth !== selectedMonth || entry.transferStatus !== 'Pending') {
         return entry;
       }
       return {
@@ -341,7 +373,7 @@ export function PayrollProcessingScreen() {
     setRegisterEntries(refreshedEntries);
 
     const processedMonthEntries = refreshedEntries.filter(
-      (entry) => entry.payrollMonth === selectedMonth && entry.transferStatus !== 'Cancelled'
+      (entry) => entry.payrollMonth === selectedMonth && entry.transferStatus === 'Processed'
     );
     
     const newRun: PayrollRun = {
@@ -349,10 +381,10 @@ export function PayrollProcessingScreen() {
       payrollMonth: selectedMonth,
       payrollDate: persistedRun?.payrollDate ?? processedDate,
       totalEmployees: selectedMonthSummary.totalEmployees,
-      processedEmployees: selectedMonthSummary.totalEmployees,
-      totalGross: selectedMonthSummary.totalGross,
-      totalDeductions: selectedMonthSummary.totalDeductions,
-      totalNet: selectedMonthSummary.totalNet,
+      processedEmployees: processedMonthEntries.length,
+      totalGross: processedMonthEntries.reduce((sum, entry) => sum + entry.grossSalary, 0),
+      totalDeductions: processedMonthEntries.reduce((sum, entry) => sum + entry.totalDeductions, 0),
+      totalNet: processedMonthEntries.reduce((sum, entry) => sum + entry.netSalary, 0),
       status: persistedRun?.status ?? 'PROCESSED',
       approvedBy: persistedRun?.approvedBy,
       approvalDate: persistedRun?.approvalDate,
@@ -374,19 +406,61 @@ export function PayrollProcessingScreen() {
       const remaining = prev.filter((run) => run.payrollMonth !== newRun.payrollMonth && run.id !== newRun.id);
       return [newRun, ...remaining];
     });
+    setSelectedEntryIds((prev) =>
+      prev.filter((id) => !processedMonthEntries.some((entry) => entry.id === id))
+    );
     window.dispatchEvent(new CustomEvent('finance:bank-accounts-updated'));
     window.dispatchEvent(new CustomEvent('finance:transactions-updated'));
     setIsProcessing(false);
     setShowProcessModal(false);
   };
 
+  const handleResetPayroll = async () => {
+    setProcessingError(null);
+    setProcessingWarning(null);
+    setIsResetting(true);
+
+    try {
+      const accessToken = await getAccessToken();
+      const headers: HeadersInit = accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+      const response = await fetch(`/api/payroll-runs?payrollMonth=${selectedMonth}`, {
+        method: 'DELETE',
+        headers,
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error ?? 'Failed to reset payroll month');
+      }
+
+      setRegisterEntries((prev) =>
+        prev.map((entry) =>
+          entry.payrollMonth === selectedMonth
+            ? { ...entry, transferStatus: 'Pending' as const, transferDate: undefined }
+            : entry
+        )
+      );
+      setSelectedEntryIds((prev) =>
+        prev.filter((id) => !registerEntries.some((entry) => entry.id === id && entry.payrollMonth === selectedMonth))
+      );
+      setPayrollRuns((prev) => prev.filter((run) => run.payrollMonth !== selectedMonth));
+      window.dispatchEvent(new CustomEvent('finance:bank-accounts-updated'));
+      window.dispatchEvent(new CustomEvent('finance:transactions-updated'));
+      setProcessingWarning(`Payroll reset completed for ${selectedMonth}. You can process again now.`);
+    } catch (error) {
+      setProcessingError(error instanceof Error ? error.message : 'Failed to reset payroll month');
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch(status) {
       case 'PROCESSED': return 'bg-blue-100 text-blue-800';
       case 'APPROVED': return 'bg-purple-100 text-purple-800';
-      case 'SUBMITTED': return 'bg-yellow-100 text-yellow-800';
+      case 'DRAFT': return 'bg-yellow-100 text-yellow-800';
       case 'REJECTED': return 'bg-red-100 text-red-800';
-      case 'DRAFT': return 'bg-gray-100 text-gray-700';
+      case 'QUEUED': return 'bg-gray-100 text-gray-700';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -414,10 +488,20 @@ export function PayrollProcessingScreen() {
             <p className="text-sm text-gray-600 mt-0.5">Generate and process monthly payroll</p>
           </div>
         </div>
-        <Button onClick={() => setShowProcessModal(true)} className="bg-purple-600 hover:bg-purple-700">
-          <Play size={18} className="mr-2" />
-          Process Payroll
-        </Button>
+        <div className="flex gap-3">
+          <Button
+            variant="outline"
+            onClick={handleResetPayroll}
+            disabled={isResetting}
+          >
+            <RotateCcw size={18} className="mr-2" />
+            {isResetting ? 'Resetting...' : 'Reset Month'}
+          </Button>
+          <Button onClick={() => setShowProcessModal(true)} className="bg-purple-600 hover:bg-purple-700">
+            <Play size={18} className="mr-2" />
+            Process Payroll
+          </Button>
+        </div>
       </div>
 
       {processingError && (
@@ -427,11 +511,12 @@ export function PayrollProcessingScreen() {
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         {[
           { label: 'Total Employees', value: totalEmployees.toLocaleString('en-IN'), icon: '👥' },
           { label: 'Last Payroll', value: lastPayroll, icon: '📅' },
           { label: 'Total Processed', value: `₹${totalProcessed.toLocaleString('en-IN')}`, icon: '💰' },
+          { label: 'Processed This Month', value: `₹${selectedMonthSummary.processedAmount.toLocaleString('en-IN')}`, icon: '✅' },
           { label: 'Pending Approval', value: pendingApprovals.toLocaleString('en-IN'), icon: '⏳' },
         ].map((stat, i) => (
           <div key={i} className="bg-white border border-gray-200 rounded-lg p-4">
@@ -474,13 +559,19 @@ export function PayrollProcessingScreen() {
                   </span>
                 </td>
                 <td className="px-6 py-4 text-center">
+                  {(() => {
+                    const isPending = entry.transferStatus === 'Pending';
+                    return (
                   <input
                     type="checkbox"
-                    checked={selectedEntryIds.includes(entry.id)}
+                    checked={isPending && selectedEntryIds.includes(entry.id)}
                     onChange={(e) => toggleEntrySelection(entry.id, e.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300"
+                    disabled={!isPending}
+                    className={`h-4 w-4 rounded border-gray-300 ${!isPending ? 'cursor-not-allowed opacity-50' : ''}`}
                     aria-label={`Select payroll record for ${entry.employeeName}`}
                   />
+                    );
+                  })()}
                 </td>
               </tr>
             ))}
@@ -497,12 +588,12 @@ export function PayrollProcessingScreen() {
 
       {/* Process Payroll Modal */}
       <Dialog open={showProcessModal} onOpenChange={setShowProcessModal}>
-        <DialogContent>
-          <DialogHeader>
+        <DialogContent className="flex flex-col max-h-[90vh]">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle>Process Payroll</DialogTitle>
             <DialogDescription>Generate payroll for selected month</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 flex-1 overflow-y-auto pr-1">
             <div>
               <label className="block text-sm font-medium mb-2">Payroll Month</label>
               <input
@@ -514,19 +605,21 @@ export function PayrollProcessingScreen() {
             </div>
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <p className="text-sm text-blue-900">
-                This will process payroll using Payroll Register entries for the selected month.
+                This will submit payroll for approval using Payroll Register entries for the selected month.
               </p>
             </div>
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-1">
               <p className="text-sm text-gray-700">Employees in Register: <span className="font-semibold">{selectedMonthSummary.totalEmployees}</span></p>
               <p className="text-sm text-gray-700">Already Processed: <span className="font-semibold">{selectedMonthSummary.alreadyProcessed}</span></p>
-              <p className="text-sm text-gray-700">Total Gross: <span className="font-semibold">₹{selectedMonthSummary.totalGross.toLocaleString('en-IN')}</span></p>
-              <p className="text-sm text-gray-700">Total Deductions: <span className="font-semibold">₹{selectedMonthSummary.totalDeductions.toLocaleString('en-IN')}</span></p>
-              <p className="text-sm text-gray-700">Total Net: <span className="font-semibold text-green-700">₹{selectedMonthSummary.totalNet.toLocaleString('en-IN')}</span></p>
+              <p className="text-sm text-gray-700">Pending to Process: <span className="font-semibold">{pendingMonthSummary.totalEmployees}</span></p>
+              <p className="text-sm text-gray-700">Selected for Processing: <span className="font-semibold">{selectedPendingSummary.totalEmployees}</span></p>
+              <p className="text-sm text-gray-700">Selected Gross: <span className="font-semibold">₹{selectedPendingSummary.totalGross.toLocaleString('en-IN')}</span></p>
+              <p className="text-sm text-gray-700">Selected Deductions: <span className="font-semibold">₹{selectedPendingSummary.totalDeductions.toLocaleString('en-IN')}</span></p>
+              <p className="text-sm text-gray-700">Selected Net: <span className="font-semibold text-green-700">₹{selectedPendingSummary.totalNet.toLocaleString('en-IN')}</span></p>
             </div>
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
               <p className="text-sm text-yellow-900">
-                Review the register summary carefully before confirming.
+                Review the register summary carefully before submitting it for approval.
               </p>
             </div>
             {processingError && (
@@ -544,8 +637,8 @@ export function PayrollProcessingScreen() {
                 <p className="text-sm font-medium text-gray-800">Payroll Register Details For Processing</p>
               </div>
               <div className="max-h-56 overflow-y-auto">
-                {selectedMonthEntries.length === 0 ? (
-                  <div className="px-4 py-6 text-sm text-gray-500">No payroll register details available for this month.</div>
+                {selectedPendingEntries.length === 0 ? (
+                  <div className="px-4 py-6 text-sm text-gray-500">No pending payroll entries available for this month.</div>
                 ) : (
                   <table className="w-full text-sm">
                     <thead className="bg-white border-b border-gray-200 sticky top-0">
@@ -557,7 +650,7 @@ export function PayrollProcessingScreen() {
                       </tr>
                     </thead>
                     <tbody>
-                      {selectedMonthEntries.map((entry) => (
+                      {selectedPendingEntries.map((entry) => (
                         <tr key={entry.id} className="border-b border-gray-100">
                           <td className="px-4 py-2 text-gray-700">{entry.employeeName}</td>
                           <td className="px-4 py-2 text-right text-gray-700">₹{entry.grossSalary.toLocaleString('en-IN')}</td>
@@ -571,14 +664,14 @@ export function PayrollProcessingScreen() {
               </div>
             </div>
           </div>
-          <div className="flex gap-3 justify-end pt-6">
+          <div className="flex gap-3 justify-end pt-4 border-t border-gray-100 flex-shrink-0">
             <Button variant="outline" onClick={() => setShowProcessModal(false)}>Cancel</Button>
             <Button 
               onClick={handleProcessPayroll}
-              disabled={isProcessing || selectedMonthSummary.totalEmployees === 0}
+              disabled={isProcessing || selectedPendingSummary.totalEmployees === 0}
               className="bg-purple-600 hover:bg-purple-700"
             >
-              {isProcessing ? 'Processing...' : selectedMonthSummary.totalEmployees === 0 ? 'No Register Data' : 'Process Payroll'}
+              {isProcessing ? 'Submitting...' : selectedPendingSummary.totalEmployees === 0 ? 'Select Employees' : 'Submit For Approval'}
             </Button>
           </div>
         </DialogContent>

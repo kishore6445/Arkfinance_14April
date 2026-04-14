@@ -138,6 +138,31 @@ export async function POST(
     const admin = getAdminClient();
     const nowIso = new Date().toISOString();
 
+    // Verify that the approver actually has the Accountant/Admin role in the DB
+    const { data: approverProfile, error: approverProfileError } = await admin
+      .from('users')
+      .select('id, role, is_active')
+      .eq('id', approverUserId)
+      .maybeSingle();
+
+    if (approverProfileError || !approverProfile) {
+      return NextResponse.json({ error: 'Approver user not found' }, { status: 403 });
+    }
+
+    if (!approverProfile.is_active) {
+      return NextResponse.json({ error: 'Approver account is inactive' }, { status: 403 });
+    }
+
+    const approverRoleNormalized = (approverProfile.role ?? '')
+      .trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    const allowedApproverRoles = ['ACCOUNTANT', 'ORG_ADMIN', 'SUPER_ADMIN'];
+    if (!allowedApproverRoles.includes(approverRoleNormalized)) {
+      return NextResponse.json(
+        { error: 'Only Accountant users can approve transactions' },
+        { status: 403 }
+      );
+    }
+
     const { data: existingApproval, error: approvalFetchError } = await admin
       .from('approvals')
       .select('*')
@@ -165,7 +190,7 @@ export async function POST(
 
     const { data: existingTransaction, error: transactionFetchError } = await admin
       .from('transactions')
-      .select('id, amount, is_income, bank_account_id, approval_status, payment_status, status')
+      .select('id, amount, is_income, bank_account_id, approval_status, payment_status, status, source_type, source_reference_id')
       .eq('id', transactionId)
       .maybeSingle<TransactionRow>();
 
@@ -223,7 +248,7 @@ export async function POST(
       .from('transactions')
       .update(transactionPayload)
       .eq('id', transactionId)
-      .select('id, amount, is_income, bank_account_id, approval_status, payment_status, status')
+      .select('id, amount, is_income, bank_account_id, approval_status, payment_status, status, source_type, source_reference_id')
       .single();
 
     if (transactionUpdateError) {
@@ -232,7 +257,7 @@ export async function POST(
         .from('transactions')
         .update(retryPayload)
         .eq('id', transactionId)
-        .select('id, amount, is_income, bank_account_id, approval_status, payment_status, status')
+        .select('id, amount, is_income, bank_account_id, approval_status, payment_status, status, source_type, source_reference_id')
         .single());
     }
 
@@ -267,6 +292,24 @@ export async function POST(
       if (delta !== 0) {
         await adjustBankAccountBalance(admin, accountId, delta);
       }
+    }
+
+    const transactionSourceType = String(updatedTransaction?.source_type ?? existingTransaction.source_type ?? '').trim().toUpperCase();
+    const payrollRunId = String(updatedTransaction?.source_reference_id ?? existingTransaction.source_reference_id ?? '').trim();
+    if (transactionSourceType === 'PAYROLL' && payrollRunId) {
+      const payrollRunPayload = {
+        status: 'PROCESSED',
+        approved_by: approverUserId,
+        approval_date: nowIso,
+        processed_date: nowIso,
+        paid_date: nowIso,
+        updated_at: nowIso,
+      };
+
+      await admin
+        .from('payroll_runs')
+        .update(payrollRunPayload)
+        .eq('id', payrollRunId);
     }
 
     return NextResponse.json(

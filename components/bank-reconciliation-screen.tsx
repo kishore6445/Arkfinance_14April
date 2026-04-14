@@ -26,6 +26,12 @@ interface StatementRow {
   reference?: string;
 }
 
+interface StatementParseResult {
+  rows: StatementRow[];
+  error: string | null;
+  diagnostics?: string[];
+}
+
 interface BankAccountOption {
   id: string;
   accountName: string;
@@ -52,6 +58,9 @@ export function BankReconciliationScreen() {
   const [error, setError] = useState<string | null>(null);
   const [reconciliationMessage, setReconciliationMessage] = useState<string | null>(null);
   const [uploadedStatementRows, setUploadedStatementRows] = useState<StatementRow[]>([]);
+  const [suggestedMatches, setSuggestedMatches] = useState<Record<string, InboxTransaction | null>>({});
+  const [selectedStatementIds, setSelectedStatementIds] = useState<string[]>([]);
+  const [reconciledStatementIds, setReconciledStatementIds] = useState<string[]>([]);
 
   // Load bank accounts for the account selector
   useEffect(() => {
@@ -66,7 +75,6 @@ export function BankReconciliationScreen() {
           accountName: a.account_name,
         }));
         setBankAccounts(accounts);
-        if (accounts.length > 0) setSelectedAccount(accounts[0].id);
       } catch (err: any) {
         setError(err?.message ?? 'Failed to load bank accounts.');
       }
@@ -90,7 +98,6 @@ export function BankReconciliationScreen() {
       const periodSet = new Set<string>(raw.map((t) => (t.date as string).substring(0, 7)));
       const sortedPeriods = Array.from(periodSet).sort().reverse();
       setPeriods(sortedPeriods);
-      if (sortedPeriods.length > 0 && !selectedPeriod) setSelectedPeriod(sortedPeriods[0]);
 
       // Recorded (inbox) transactions — all transactions in system
       const inbox: InboxTransaction[] = raw.map((t) => ({
@@ -130,6 +137,16 @@ export function BankReconciliationScreen() {
   const matchPercentage = uploadedStatementRows.length > 0
     ? Math.round((matchedCount / uploadedStatementRows.length) * 100)
     : 0;
+
+  const getCandidatePool = useCallback(() => {
+    return inboxTransactions.filter((txn) => {
+      const accountMatch = !selectedAccount || (txn.bankAccountId ?? '') === selectedAccount;
+      const periodMatch = !selectedPeriod || (txn.bankDate ?? '').startsWith(selectedPeriod);
+      const recordedMatch = txn.status === 'Recorded';
+      const notAlreadyReconciled = txn.reconciliationStatus !== 'Reconciled';
+      return accountMatch && periodMatch && recordedMatch && notAlreadyReconciled;
+    });
+  }, [inboxTransactions, selectedAccount, selectedPeriod]);
 
   const parseDateToIso = (value: string) => {
     const trimmed = value.trim();
@@ -176,27 +193,233 @@ export function BankReconciliationScreen() {
     return Math.floor(ms / (1000 * 60 * 60 * 24));
   };
 
-  const parseCsvStatement = (text: string): StatementRow[] => {
+  const splitCsvLine = (line: string, delimiter: string) => {
+    const cells: string[] = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let index = 0; index < line.length; index++) {
+      const char = line[index];
+      const nextChar = line[index + 1];
+
+      if (char === '"') {
+        if (inQuotes && nextChar === '"') {
+          current += '"';
+          index++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+        continue;
+      }
+
+      if (char === delimiter && !inQuotes) {
+        cells.push(current.trim());
+        current = '';
+        continue;
+      }
+
+      current += char;
+    }
+
+    cells.push(current.trim());
+    return cells;
+  };
+
+  const detectDelimiter = (headerLine: string) => {
+    const candidates = [',', ';', '\t'];
+    let bestDelimiter = ',';
+    let bestCount = -1;
+
+    for (const candidate of candidates) {
+      const count = splitCsvLine(headerLine, candidate).length;
+      if (count > bestCount) {
+        bestDelimiter = candidate;
+        bestCount = count;
+      }
+    }
+
+    return bestDelimiter;
+  };
+
+  const DATE_HEADER_ALIASES = [
+    'date',
+    'transaction date',
+    'txn date',
+    'value date',
+    'posted date',
+    'booking date',
+    'entry date',
+  ];
+
+  const DESCRIPTION_HEADER_ALIASES = [
+    'description',
+    'narration',
+    'remarks',
+    'remark',
+    'particulars',
+    'details',
+    'transaction details',
+    'transaction remarks',
+    'payment details',
+    'transaction description',
+  ];
+
+  const AMOUNT_HEADER_ALIASES = [
+    'amount',
+    'transaction amount',
+    'amount inr',
+    'amount rs',
+    'amt',
+  ];
+
+  const CREDIT_HEADER_ALIASES = [
+    'credit',
+    'credit amount',
+    'deposit',
+    'deposit amount',
+    'paid in',
+    'amount cr',
+    'cr amount',
+  ];
+
+  const DEBIT_HEADER_ALIASES = [
+    'debit',
+    'debit amount',
+    'withdrawal',
+    'withdrawal amount',
+    'withdraw',
+    'amount dr',
+    'dr amount',
+  ];
+
+  const REFERENCE_HEADER_ALIASES = [
+    'reference',
+    'ref',
+    'reference no',
+    'reference number',
+    'transaction id',
+    'utr',
+    'rrn',
+    'cheque no',
+    'check no',
+    'chq no',
+  ];
+
+  const headerMatchesAlias = (header: string, aliases: string[]) => {
+    const normalizedHeader = normalizeText(header);
+    return aliases.some((alias) => {
+      const normalizedAlias = normalizeText(alias);
+      return normalizedHeader === normalizedAlias || normalizedHeader.includes(normalizedAlias);
+    });
+  };
+
+  const findColumnIndex = (headers: string[], aliases: string[]) =>
+    headers.findIndex((header) => headerMatchesAlias(header, aliases));
+
+  const analyzeHeaderRow = (line: string) => {
+    const delimiter = detectDelimiter(line);
+    const headers = splitCsvLine(line, delimiter).map((header) => header.trim());
+    const normalizedHeaders = headers.map((header) => normalizeText(header));
+
+    const dateIdx = findColumnIndex(normalizedHeaders, DATE_HEADER_ALIASES);
+    const descIdx = findColumnIndex(normalizedHeaders, DESCRIPTION_HEADER_ALIASES);
+    const amountIdx = findColumnIndex(normalizedHeaders, AMOUNT_HEADER_ALIASES);
+    const creditIdx = findColumnIndex(normalizedHeaders, CREDIT_HEADER_ALIASES);
+    const debitIdx = findColumnIndex(normalizedHeaders, DEBIT_HEADER_ALIASES);
+    const refIdx = findColumnIndex(normalizedHeaders, REFERENCE_HEADER_ALIASES);
+
+    let score = 0;
+    if (dateIdx >= 0) score += 2;
+    if (descIdx >= 0) score += 2;
+    if (amountIdx >= 0) score += 2;
+    if (creditIdx >= 0) score += 1;
+    if (debitIdx >= 0) score += 1;
+    if (refIdx >= 0) score += 1;
+
+    return {
+      delimiter,
+      headers,
+      normalizedHeaders,
+      dateIdx,
+      descIdx,
+      amountIdx,
+      creditIdx,
+      debitIdx,
+      refIdx,
+      score,
+    };
+  };
+
+  const parseCsvStatement = (text: string): StatementParseResult => {
     const lines = text
       .split(/\r?\n/)
-      .map((line) => line.trim())
+      .map((line) => line.replace(/^\uFEFF/, '').trim())
       .filter(Boolean);
 
     if (lines.length < 2) {
-      return [];
+      return {
+        rows: [],
+        error: 'The uploaded file is empty or does not contain any statement rows.',
+        diagnostics: ['Expected a header row and at least one transaction row.'],
+      };
     }
 
-    const headers = lines[0].split(',').map((h) => h.trim().toLowerCase());
-    const dateIdx = headers.findIndex((h) => h.includes('date'));
-    const descIdx = headers.findIndex((h) => h.includes('description') || h.includes('narration') || h.includes('remarks'));
-    const amountIdx = headers.findIndex((h) => h === 'amount' || h.includes('amount'));
-    const creditIdx = headers.findIndex((h) => h.includes('credit') || h.includes('deposit'));
-    const debitIdx = headers.findIndex((h) => h.includes('debit') || h.includes('withdraw'));
-    const refIdx = headers.findIndex((h) => h.includes('ref'));
+    const headerCandidates = lines
+      .slice(0, Math.min(lines.length, 10))
+      .map((line, index) => ({ index, analysis: analyzeHeaderRow(line) }))
+      .sort((left, right) => right.analysis.score - left.analysis.score);
+
+    const bestCandidate = headerCandidates[0];
+
+    if (!bestCandidate || bestCandidate.analysis.score < 4) {
+      return {
+        rows: [],
+        error: 'The CSV format could not be recognized.',
+        diagnostics: [
+          'Could not find a usable header row in the first 10 lines of the file.',
+          'Supported columns include Date, Transaction Date, Value Date, Description, Narration, Remarks, Particulars, Amount, Credit, Debit, Deposit, and Withdrawal.',
+        ],
+      };
+    }
+
+    const {
+      delimiter,
+      headers,
+      normalizedHeaders,
+      dateIdx,
+      descIdx,
+      amountIdx,
+      creditIdx,
+      debitIdx,
+      refIdx,
+    } = bestCandidate.analysis;
+    const headerRowIndex = bestCandidate.index;
+
+    const diagnostics: string[] = [];
+
+    if (dateIdx < 0) diagnostics.push('Missing date column. Use a header like Date or Transaction Date.');
+    if (descIdx < 0) diagnostics.push('Missing description column. Use Description, Narration, Remarks, or Particulars.');
+    if (amountIdx < 0 && creditIdx < 0 && debitIdx < 0) {
+      diagnostics.push('Missing amount columns. Use either Amount or separate Credit and Debit or Deposit and Withdrawal columns.');
+    }
+
+    if (diagnostics.length > 0) {
+      return {
+        rows: [],
+        error: 'The CSV format could not be recognized.',
+        diagnostics: [
+          `Detected header row: ${headerRowIndex + 1}.`,
+          `Detected delimiter: ${delimiter === '\t' ? 'tab' : delimiter}.`,
+          `Headers found: ${headers.join(', ') || 'none'}.`,
+          ...diagnostics,
+        ],
+      };
+    }
 
     const rows: StatementRow[] = [];
-    for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i].split(',').map((c) => c.trim());
+    let invalidRows = 0;
+    for (let i = headerRowIndex + 1; i < lines.length; i++) {
+      const cols = splitCsvLine(lines[i], delimiter);
       const isoDate = dateIdx >= 0 ? parseDateToIso(cols[dateIdx] ?? '') : null;
       const description = descIdx >= 0 ? cols[descIdx] ?? '' : '';
       const reference = refIdx >= 0 ? cols[refIdx] ?? '' : '';
@@ -225,6 +448,7 @@ export function BankReconciliationScreen() {
       }
 
       if (!isoDate || !description || amount === null || amount <= 0) {
+        invalidRows++;
         continue;
       }
 
@@ -238,7 +462,28 @@ export function BankReconciliationScreen() {
       });
     }
 
-    return rows;
+    if (rows.length === 0) {
+      return {
+        rows: [],
+        error: 'No valid rows could be parsed from the uploaded CSV.',
+        diagnostics: [
+          `Detected header row: ${headerRowIndex + 1}.`,
+          `Detected delimiter: ${delimiter === '\t' ? 'tab' : delimiter}.`,
+          `Headers found: ${normalizedHeaders.join(', ')}.`,
+          `Ignored ${invalidRows} invalid row(s).`,
+          'Check that each row has a valid date, description, and amount.',
+        ],
+      };
+    }
+
+    return {
+      rows,
+      error: null,
+      diagnostics: [
+        `Detected header row: ${headerRowIndex + 1}.`,
+        `Parsed ${rows.length} valid row(s). Ignored ${invalidRows} invalid row(s).`,
+      ],
+    };
   };
 
   const updateReconciliationOnTransaction = async (
@@ -268,24 +513,67 @@ export function BankReconciliationScreen() {
     }
   };
 
-  const handleStatementUpload = async (file: File | null) => {
-    if (!file) {
+  const buildSuggestedMatches = useCallback((rows: StatementRow[]) => {
+    const candidatePool = getCandidatePool();
+    const usedTransactionIds = new Set<string>();
+    const nextSuggestions: Record<string, InboxTransaction | null> = {};
+
+    for (const stmt of rows) {
+      const stmtDescription = normalizeText(stmt.description);
+
+      const candidate = candidatePool
+        .filter((txn) => {
+          if (usedTransactionIds.has(txn.id)) return false;
+
+          const amountMatch = Math.abs(txn.amount - stmt.amount) <= 1;
+          const typeMatch = txn.isIncome === (stmt.type === 'credit');
+          if (!amountMatch || !typeMatch) {
+            return false;
+          }
+
+          const daysDiff = dateDiffInDays(txn.bankDate ?? '', stmt.date);
+          return Number.isFinite(daysDiff) && daysDiff <= 3;
+        })
+        .sort((a, b) => {
+          const aDateDiff = dateDiffInDays(a.bankDate ?? '', stmt.date);
+          const bDateDiff = dateDiffInDays(b.bankDate ?? '', stmt.date);
+          if (aDateDiff !== bDateDiff) {
+            return aDateDiff - bDateDiff;
+          }
+
+          const aDesc = normalizeText(a.description);
+          const bDesc = normalizeText(b.description);
+          const aDescScore = stmtDescription && aDesc.includes(stmtDescription) ? 1 : 0;
+          const bDescScore = stmtDescription && bDesc.includes(stmtDescription) ? 1 : 0;
+          return bDescScore - aDescScore;
+        })[0] ?? null;
+
+      if (candidate) {
+        usedTransactionIds.add(candidate.id);
+      }
+      nextSuggestions[stmt.id] = candidate;
+    }
+
+    setSuggestedMatches(nextSuggestions);
+    setSelectedStatementIds(rows.filter((stmt) => nextSuggestions[stmt.id]).map((stmt) => stmt.id));
+  }, [getCandidatePool]);
+
+  useEffect(() => {
+    if (uploadedStatementRows.length === 0) {
+      setSuggestedMatches({});
+      setSelectedStatementIds([]);
+      setReconciledStatementIds([]);
       return;
     }
 
-    if (!file.name.toLowerCase().endsWith('.csv')) {
-      setError('Please upload a CSV statement file.');
+    buildSuggestedMatches(uploadedStatementRows);
+  }, [uploadedStatementRows, buildSuggestedMatches]);
+
+  const handleManualReconcile = async () => {
+    if (selectedStatementIds.length === 0) {
+      setError('Select at least one statement transaction to reconcile.');
       return;
     }
-
-    const content = await file.text();
-    const parsedRows = parseCsvStatement(content);
-    if (parsedRows.length === 0) {
-      setError('No valid rows found in the uploaded statement.');
-      return;
-    }
-
-    setUploadedStatementRows(parsedRows);
 
     setIsReconciling(true);
     setError(null);
@@ -293,61 +581,97 @@ export function BankReconciliationScreen() {
 
     try {
       let matched = 0;
-      const usedTransactionIds = new Set<string>();
-      const candidatePool = inboxTransactions.filter((txn) => {
-        const accountMatch = !selectedAccount || (txn.bankAccountId ?? '') === selectedAccount;
-        const periodMatch = !selectedPeriod || (txn.bankDate ?? '').startsWith(selectedPeriod);
-        const recordedMatch = txn.status === 'Recorded';
-        return accountMatch && periodMatch && recordedMatch;
-      });
+      const reconciledIds: string[] = [];
+      for (const statementId of selectedStatementIds) {
+        const statementRow = uploadedStatementRows.find((row) => row.id === statementId);
+        const matchedTransaction = suggestedMatches[statementId];
 
-      for (const stmt of parsedRows) {
-        const stmtDescription = normalizeText(stmt.description);
-
-        const candidate = candidatePool
-          .filter((txn) => {
-            if (usedTransactionIds.has(txn.id)) return false;
-
-            const amountMatch = Math.abs(txn.amount - stmt.amount) <= 1;
-            const typeMatch = txn.isIncome === (stmt.type === 'credit');
-            if (!amountMatch || !typeMatch) {
-              return false;
-            }
-
-            const daysDiff = dateDiffInDays(txn.bankDate ?? '', stmt.date);
-            return Number.isFinite(daysDiff) && daysDiff <= 3;
-          })
-          .sort((a, b) => {
-            const aDateDiff = dateDiffInDays(a.bankDate ?? '', stmt.date);
-            const bDateDiff = dateDiffInDays(b.bankDate ?? '', stmt.date);
-            if (aDateDiff !== bDateDiff) {
-              return aDateDiff - bDateDiff;
-            }
-
-            const aDesc = normalizeText(a.description);
-            const bDesc = normalizeText(b.description);
-            const aDescScore = stmtDescription && aDesc.includes(stmtDescription) ? 1 : 0;
-            const bDescScore = stmtDescription && bDesc.includes(stmtDescription) ? 1 : 0;
-            return bDescScore - aDescScore;
-          })[0];
-
-        if (!candidate) {
+        if (!statementRow || !matchedTransaction) {
           continue;
         }
 
-        await updateReconciliationOnTransaction(candidate, stmt.reference || stmt.description);
-        usedTransactionIds.add(candidate.id);
+        await updateReconciliationOnTransaction(
+          matchedTransaction,
+          statementRow.reference || statementRow.description
+        );
         matched++;
+        reconciledIds.push(statementId);
       }
 
-      const unmatched = parsedRows.length - matched;
-      setReconciliationMessage(`Statement uploaded. ${matched} transaction(s) reconciled, ${unmatched} unmatched.`);
+      if (reconciledIds.length > 0) {
+        setReconciledStatementIds((prev) => Array.from(new Set([...prev, ...reconciledIds])));
+      }
+      setSelectedStatementIds((prev) => prev.filter((id) => !reconciledIds.includes(id)));
+
+      setReconciliationMessage(
+        matched > 0
+          ? `Manual reconciliation completed. ${matched} transaction(s) reconciled.`
+          : 'No selected rows could be reconciled. Try re-uploading or adjusting filters.'
+      );
+
       await loadTransactions();
+      buildSuggestedMatches(uploadedStatementRows);
     } catch (err: any) {
-      setError(err?.message ?? 'Failed to reconcile uploaded statement.');
+      setError(err?.message ?? 'Failed to reconcile selected statement transactions.');
     } finally {
       setIsReconciling(false);
     }
+  };
+
+  const handleStatementUpload = async (file: File | null) => {
+    if (!file) {
+      return;
+    }
+
+    const fileName = file.name.toLowerCase();
+    const isCsv = fileName.endsWith('.csv');
+    const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
+
+    if (!isCsv && !isExcel) {
+      setError('Please upload a CSV or Excel statement file (.csv, .xlsx, or .xls).');
+      return;
+    }
+
+    let content = '';
+
+    try {
+      if (isExcel) {
+        const XLSX = await import('xlsx');
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+
+        if (!firstSheetName) {
+          setError('The uploaded Excel file does not contain any worksheets.');
+          return;
+        }
+
+        const sheet = workbook.Sheets[firstSheetName];
+        content = XLSX.utils.sheet_to_csv(sheet, { blankrows: false });
+      } else {
+        content = await file.text();
+      }
+    } catch (uploadError: any) {
+      setError(uploadError?.message ?? 'Failed to read the uploaded statement file.');
+      return;
+    }
+
+    const parseResult = parseCsvStatement(content);
+    if (parseResult.error) {
+      const details = parseResult.diagnostics?.length ? ` ${parseResult.diagnostics.join(' ')}` : '';
+      setError(`${parseResult.error}${details}`);
+      return;
+    }
+
+    const parsedRows = parseResult.rows;
+    setUploadedStatementRows(parsedRows);
+    setError(null);
+    setReconciledStatementIds([]);
+
+    const parseNote = parseResult.diagnostics?.[0] ? ` ${parseResult.diagnostics[0]}` : '';
+    setReconciliationMessage(
+      `Statement uploaded. ${parsedRows.length} transaction(s) loaded.${parseNote}`
+    );
   };
 
   return (
@@ -376,6 +700,7 @@ export function BankReconciliationScreen() {
               onChange={(e) => setSelectedAccount(e.target.value)}
               className="px-3 py-2 text-xs border border-border rounded bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
             >
+              <option value="">All accounts</option>
               {bankAccounts.length === 0 && <option value="">No accounts</option>}
               {bankAccounts.map((acc) => (
                 <option key={acc.id} value={acc.id}>{acc.accountName}</option>
@@ -399,21 +724,26 @@ export function BankReconciliationScreen() {
           </div>
           <div className="ml-auto">
             <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1 block">Bank Statement</label>
-            <label className="inline-flex items-center gap-2 px-3 py-2 text-xs border border-border rounded bg-background hover:bg-muted/20 cursor-pointer">
-              <Upload size={14} />
-              <span>{isReconciling ? 'Reconciling...' : 'Upload CSV Statement'}</span>
-              <input
-                type="file"
-                accept=".csv"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0] ?? null;
-                  void handleStatementUpload(file);
-                  e.currentTarget.value = '';
-                }}
-                disabled={isReconciling}
-              />
-            </label>
+            <div>
+              <label className="inline-flex items-center gap-2 px-3 py-2 text-xs border border-border rounded bg-background hover:bg-muted/20 cursor-pointer">
+                <Upload size={14} />
+                <span>{isReconciling ? 'Reconciling...' : 'Upload Statement'}</span>
+                <input
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    void handleStatementUpload(file);
+                    e.currentTarget.value = '';
+                  }}
+                  disabled={isReconciling}
+                />
+              </label>
+              <p className="mt-2 max-w-md text-[11px] text-muted-foreground">
+                Expected columns: Date, Description or Narration, and either Amount or separate Credit and Debit. CSV and Excel statement files are supported. Comma, semicolon, and tab-delimited CSV files are accepted.
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -444,46 +774,137 @@ export function BankReconciliationScreen() {
         </div>
       </div>
 
-      {/* Recorded Transactions Layout */}
+      {/* Recorded + Bank Statement Side-by-Side */}
       <div className="flex-1 overflow-auto">
         {isLoading ? (
           <div className="flex items-center justify-center py-24 text-sm text-muted-foreground">Loading transactions...</div>
-        ) : filteredInbox.length === 0 ? (
-          <div className="flex items-center justify-center py-24 text-sm text-muted-foreground">No transactions found for this period.</div>
         ) : (
-        <div className="p-8">
-          <div>
-            <h2 className="text-lg font-medium mb-4">Recorded Transactions</h2>
-            <div className="space-y-3">
-              {filteredInbox.map((txn) => (
-                <div key={txn.id} className="border border-border rounded-lg p-4 bg-accent/5 hover:bg-accent/10 transition-colors">
-                  <div className="flex items-start justify-between gap-3 mb-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{txn.description}</p>
-                      <p className="text-xs text-muted-foreground mt-1">{txn.date}</p>
-                    </div>
-                    <p className="text-sm font-semibold text-accent whitespace-nowrap">
-                      {txn.isIncome ? '+' : '−'}₹{txn.amount.toLocaleString()}
-                    </p>
-                  </div>
-                  <p className="text-xs text-foreground/80 mb-2">
-                    Amount: {txn.isIncome ? '+' : '−'}₹{txn.amount.toLocaleString('en-IN')}
-                  </p>
-                  <div
-                    className={`text-xs font-medium flex items-center gap-1 ${
-                      txn.reconciliationStatus === 'Reconciled'
-                        ? 'text-green-700 dark:text-green-400'
-                        : 'text-amber-700 dark:text-amber-400'
-                    }`}
-                  >
-                    <CheckCircle2 size={14} />
-                    {txn.reconciliationStatus === 'Reconciled' ? 'Reconciled' : 'Pending Reconciliation'}
-                  </div>
+          <div className="p-8 grid grid-cols-1 xl:grid-cols-2 gap-8">
+            <div>
+              <h2 className="text-lg font-medium mb-4">Recorded Transactions</h2>
+              {filteredInbox.length === 0 ? (
+                <div className="border border-dashed border-border rounded-lg p-6 text-sm text-muted-foreground bg-muted/10">
+                  No recorded transactions found for this account and period.
                 </div>
-              ))}
+              ) : (
+                <div className="space-y-3">
+                  {filteredInbox.map((txn) => (
+                    <div key={txn.id} className="border border-border rounded-lg p-4 bg-accent/5 hover:bg-accent/10 transition-colors">
+                      <div className="flex items-start justify-between gap-3 mb-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground truncate">{txn.description}</p>
+                          <p className="text-xs text-muted-foreground mt-1">{txn.date}</p>
+                        </div>
+                        <p className="text-sm font-semibold text-accent whitespace-nowrap">
+                          {txn.isIncome ? '+' : '−'}₹{txn.amount.toLocaleString()}
+                        </p>
+                      </div>
+                      <p className="text-xs text-foreground/80 mb-2">
+                        Amount: {txn.isIncome ? '+' : '−'}₹{txn.amount.toLocaleString('en-IN')}
+                      </p>
+                      <div
+                        className={`text-xs font-medium flex items-center gap-1 ${
+                          txn.reconciliationStatus === 'Reconciled'
+                            ? 'text-green-700 dark:text-green-400'
+                            : 'text-amber-700 dark:text-amber-400'
+                        }`}
+                      >
+                        <CheckCircle2 size={14} />
+                        {txn.reconciliationStatus === 'Reconciled' ? 'Reconciled' : 'Pending Reconciliation'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <h2 className="text-lg font-medium">Uploaded Bank Statement Transactions</h2>
+                {uploadedStatementRows.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => void handleManualReconcile()}
+                    disabled={isReconciling || selectedStatementIds.length === 0}
+                    className="px-3 py-2 text-xs border border-border rounded bg-background hover:bg-muted/20 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {isReconciling ? 'Reconciling...' : `Reconcile Selected (${selectedStatementIds.length})`}
+                  </button>
+                )}
+              </div>
+
+              {uploadedStatementRows.length === 0 ? (
+                <div className="border border-dashed border-border rounded-lg p-6 text-sm text-muted-foreground bg-muted/10">
+                  Upload a statement file to load bank transactions for manual reconciliation.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {uploadedStatementRows.map((stmt) => {
+                    const suggestion = suggestedMatches[stmt.id];
+                    const isReconciled = reconciledStatementIds.includes(stmt.id);
+                    const canReconcile = Boolean(suggestion);
+                    const isSelected = selectedStatementIds.includes(stmt.id);
+
+                    return (
+                      <div key={stmt.id} className="border border-border rounded-lg p-4 bg-background">
+                        <div className="flex items-start gap-3">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            disabled={!canReconcile || isReconciling || isReconciled}
+                            onChange={(e) => {
+                              setSelectedStatementIds((prev) => {
+                                if (e.target.checked) {
+                                  return prev.includes(stmt.id) ? prev : [...prev, stmt.id];
+                                }
+
+                                return prev.filter((id) => id !== stmt.id);
+                              });
+                            }}
+                            className="mt-1 h-4 w-4 rounded border-border"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-3 mb-1">
+                              <p className="text-sm font-medium text-foreground truncate">{stmt.description}</p>
+                              <p className="text-sm font-semibold text-accent whitespace-nowrap">
+                                {stmt.type === 'credit' ? '+' : '−'}₹{stmt.amount.toLocaleString('en-IN')}
+                              </p>
+                            </div>
+                            <p className="text-xs text-muted-foreground mb-2">
+                              {new Date(stmt.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                              {stmt.reference ? ` • Ref: ${stmt.reference}` : ''}
+                            </p>
+                            <div className="mb-2 rounded border border-border bg-muted/10 px-2 py-1 text-xs">
+                              <span className="text-muted-foreground">Statement Amount: </span>
+                              <span className="font-medium text-foreground">
+                                {stmt.type === 'credit' ? '+' : '−'}₹{stmt.amount.toLocaleString('en-IN')}
+                              </span>
+                            </div>
+                            {isReconciled ? (
+                              <p className="text-xs text-green-700 dark:text-green-400">
+                                Reconciled
+                              </p>
+                            ) : suggestion ? (
+                              <div className="text-xs text-green-700 dark:text-green-400">
+                                <p>Suggested match: {suggestion.description}</p>
+                                <p>
+                                  Recorded on {suggestion.date} • Ref {suggestion.id.slice(0, 8)}
+                                </p>
+                              </div>
+                            ) : (
+                              <p className="text-xs text-amber-700 dark:text-amber-400">
+                                No matching recorded transaction found for this row.
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
-        </div>
         )}
       </div>
 

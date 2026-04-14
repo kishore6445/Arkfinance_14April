@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 type InvoiceRequest = {
+  id?: string
   invoiceNo: string
   partyName: string
   type: 'Revenue' | 'Expense'
@@ -214,6 +215,93 @@ async function insertInvoiceWithFallbacks(
   return { data: null, error: { message: `Unable to create invoice. Errors: ${errors.join(' | ')}` } }
 }
 
+async function updateInvoiceWithFallbacks(
+  admin: ReturnType<typeof getAdminClient>,
+  organizationId: string,
+  body: InvoiceRequest
+) {
+  if (!body.id) {
+    return { data: null, error: { message: 'Invoice id is required' } }
+  }
+
+  const paidAmount = Math.max(0, Number(body.paidAmount ?? 0))
+  const balanceDue = Math.max(0, Number(body.balanceDue ?? Math.max(0, body.invoiceAmount - paidAmount)))
+  const status = body.status ?? (balanceDue <= 0 ? 'Paid' : paidAmount > 0 ? 'Partial' : 'Unpaid')
+
+  const payloadVariants: Array<Record<string, unknown>> = [
+    {
+      invoice_no: body.invoiceNo.trim(),
+      party_name: body.partyName.trim(),
+      type: body.type,
+      invoice_amount: body.invoiceAmount,
+      paid_amount: paidAmount,
+      balance_due: balanceDue,
+      due_date: body.dueDate,
+      status,
+    },
+    {
+      invoice_no: body.invoiceNo.trim(),
+      party_name: body.partyName.trim(),
+      type: body.type,
+      invoice_amount: body.invoiceAmount,
+      paid_amount: paidAmount,
+      balance_due: balanceDue,
+      dueDate: body.dueDate,
+      status,
+    },
+    {
+      invoiceno: body.invoiceNo.trim(),
+      partyname: body.partyName.trim(),
+      type: body.type,
+      invoiceamount: body.invoiceAmount,
+      paidamount: paidAmount,
+      balancedue: balanceDue,
+      due_date: body.dueDate,
+      status,
+    },
+    {
+      invoiceno: body.invoiceNo.trim(),
+      partyname: body.partyName.trim(),
+      type: body.type,
+      invoiceamount: body.invoiceAmount,
+      paidamount: paidAmount,
+      balancedue: balanceDue,
+      dueDate: body.dueDate,
+      status,
+    },
+  ]
+
+  const filters: Array<Array<[string, string]>> = [
+    [
+      ['id', body.id],
+      ['organization_id', organizationId],
+    ],
+    [
+      ['id', body.id],
+      ['organizationid', organizationId],
+    ],
+  ]
+
+  const errors: string[] = []
+  for (const payload of payloadVariants) {
+    for (const filterSet of filters) {
+      let query = admin.from('invoices').update(payload)
+      for (const [column, value] of filterSet) {
+        query = query.eq(column, value)
+      }
+
+      const { data, error } = await query.select('*').single()
+      if (!error) {
+        return { data, error: null }
+      }
+
+      errors.push(error.message)
+    }
+  }
+
+  return { data: null, error: { message: `Unable to update invoice. Errors: ${errors.join(' | ')}` } }
+}
+
 export async function GET(request: Request) {
   try {
     const authorized = await getAuthorizedProfile(request)
@@ -275,6 +363,42 @@ export async function POST(request: Request) {
     }
 
     const { data, error } = await insertInvoiceWithFallbacks(admin, organizationId, body)
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
+    return NextResponse.json({ invoice: data }, { status: 200 })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unexpected server error'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const authorized = await getAuthorizedProfile(request)
+    if ('error' in authorized) {
+      return authorized.error
+    }
+
+    const { admin, profile } = authorized
+    const body = (await request.json()) as InvoiceRequest
+
+    if (!body.id) {
+      return NextResponse.json({ error: 'Invoice id is required' }, { status: 400 })
+    }
+
+    if (!body.invoiceNo?.trim() || !body.partyName?.trim() || !Number.isFinite(body.invoiceAmount) || !body.dueDate) {
+      return NextResponse.json({ error: 'Invoice number, party name, amount, and due date are required' }, { status: 400 })
+    }
+
+    const organizationId = profile.organization_id
+    if (!organizationId) {
+      return NextResponse.json({ error: 'No organization linked to this user' }, { status: 400 })
+    }
+
+    const { data, error } = await updateInvoiceWithFallbacks(admin, organizationId, body)
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 })
