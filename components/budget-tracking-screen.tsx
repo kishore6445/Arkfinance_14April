@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { Plus, Edit2, Trash2, AlertTriangle, TrendingUp, Target, X, DollarSign, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { getSupabaseClient } from '@/lib/supabase/client';
 import { useOrganization } from '@/context/organization-context';
 
@@ -339,55 +338,6 @@ export function BudgetTrackingScreen() {
           <Card className="p-6 border border-border">
             <div className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Exceeded</div>
             <div className="text-3xl font-semibold text-red-600">{stats.exceeded}</div>
-          </Card>
-        </div>
-
-        {/* ANALYTICS SECTION */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          {/* Budget vs Actual Chart */}
-          <Card className="p-6 border border-border">
-            <h3 className="text-lg font-bold text-foreground mb-4">Budget vs Actual Spending</h3>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={budgets.map(b => ({
-                name: b.category.substring(0, 10),
-                budgeted: b.budgetedAmount,
-                actual: b.actualSpent,
-              }))}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="name" stroke="#64748b" />
-                <YAxis stroke="#64748b" />
-                <Tooltip formatter={(value) => `₹${value.toLocaleString('en-IN')}`} />
-                <Legend />
-                <Bar dataKey="budgeted" fill="#3b82f6" radius={[8, 8, 0, 0]} />
-                <Bar dataKey="actual" fill="#ef4444" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </Card>
-
-          {/* Budget Status Distribution */}
-          <Card className="p-6 border border-border">
-            <h3 className="text-lg font-bold text-foreground mb-4">Budget Status Distribution</h3>
-            <ResponsiveContainer width="100%" height={250}>
-              <PieChart>
-                <Pie
-                  data={[
-                    { name: 'On Track', value: stats.onTrack },
-                    { name: 'At Risk', value: stats.atRisk },
-                    { name: 'Exceeded', value: stats.exceeded },
-                  ]}
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={80}
-                  dataKey="value"
-                  label={({ name, value }) => `${name}: ${value}`}
-                >
-                  <Cell fill="#10b981" />
-                  <Cell fill="#f59e0b" />
-                  <Cell fill="#ef4444" />
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
           </Card>
         </div>
 

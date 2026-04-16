@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { Eye, ArrowLeft, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { getSupabaseClient } from '@/lib/supabase/client';
 import { useOrganization } from '@/context/organization-context';
 
@@ -771,60 +770,6 @@ export function InvoicesScreen({ onNavigate }: InvoicesScreenProps) {
           {error}
         </div>
       )}
-
-      {/* ANALYTICS SECTION */}
-      <div className="px-6 py-6 space-y-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Invoice Status Distribution */}
-          <Card className="p-6 border border-slate-200">
-            <h3 className="text-lg font-bold text-slate-900 mb-4">Invoice Status Overview</h3>
-            <ResponsiveContainer width="100%" height={200}>
-              <PieChart>
-                <Pie
-                  data={[
-                    { name: 'Paid', value: invoices.filter(i => i.status === 'Paid').length },
-                    { name: 'Partial', value: invoices.filter(i => i.status === 'Partial').length },
-                    { name: 'Unpaid', value: invoices.filter(i => i.status === 'Unpaid').length },
-                    { name: 'Overdue', value: invoices.filter(i => i.status === 'Overdue').length },
-                  ]}
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={70}
-                  dataKey="value"
-                  label={({ name, value }) => `${name}: ${value}`}
-                >
-                  <Cell fill="#10b981" />
-                  <Cell fill="#f59e0b" />
-                  <Cell fill="#6b7280" />
-                  <Cell fill="#ef4444" />
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </Card>
-
-          {/* Invoice Amount by Status */}
-          <Card className="p-6 border border-slate-200">
-            <h3 className="text-lg font-bold text-slate-900 mb-4">Total Amount by Status</h3>
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart
-                data={[
-                  { status: 'Paid', amount: invoices.filter(i => i.status === 'Paid').reduce((s, i) => s + i.invoiceAmount, 0) },
-                  { status: 'Partial', amount: invoices.filter(i => i.status === 'Partial').reduce((s, i) => s + i.invoiceAmount, 0) },
-                  { status: 'Unpaid', amount: invoices.filter(i => i.status === 'Unpaid').reduce((s, i) => s + i.invoiceAmount, 0) },
-                  { status: 'Overdue', amount: invoices.filter(i => i.status === 'Overdue').reduce((s, i) => s + i.invoiceAmount, 0) },
-                ]}
-              >
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="status" stroke="#64748b" />
-                <YAxis stroke="#64748b" />
-                <Tooltip formatter={(value) => `₹${value.toLocaleString('en-IN')}`} />
-                <Bar dataKey="amount" fill="#3b82f6" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </Card>
-        </div>
-      </div>
 
       {/* Invoices Table */}
       <div className="flex-1 overflow-auto">
