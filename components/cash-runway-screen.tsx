@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { AlertCircle, Info } from 'lucide-react';
+import { LineChart, Line, ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useOrganization } from '@/context/organization-context';
 import { getSupabaseClient } from '@/lib/supabase/client';
 
@@ -339,8 +340,25 @@ export function CashRunwayScreen() {
 
       {/* Cash Projection Table */}
       <div className="flex-1 overflow-auto">
-        <div className="p-8">
-          <div className="border border-border rounded-lg overflow-hidden">
+        <div className="p-8 space-y-8">
+          {/* Cash Flow Projection Chart */}
+          <div className="border border-border rounded-lg p-6 bg-background">
+            <h3 className="text-lg font-bold text-foreground mb-4">Cash Flow Projection</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <ComposedChart data={cashProjections}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="month" stroke="#64748b" />
+                <YAxis stroke="#64748b" />
+                <Tooltip formatter={(value) => `₹${value.toLocaleString('en-IN')}`} />
+                <Legend />
+                <Bar dataKey="inflows" fill="#10b981" name="Inflows" radius={[8, 8, 0, 0]} />
+                <Bar dataKey="outflows" fill="#ef4444" name="Outflows" radius={[8, 8, 0, 0]} />
+                <Line type="monotone" dataKey="closingBalance" stroke="#3b82f6" strokeWidth={2} name="Closing Balance" />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Projection Table */}
             {/* Header */}
             <div className="grid grid-cols-6 gap-4 px-6 py-3 bg-muted/40 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               <div>Month</div>

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { ArrowLeft, TrendingUp } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { DateRangeFilter, type DateRange } from './date-range-filter';
 
 interface RevenueSource {
@@ -113,6 +114,46 @@ export function RevenueBreakdownScreen({ onNavigate }: RevenueBreakdownScreenPro
             <p className="text-sm text-muted-foreground mb-2">Revenue Stream Count</p>
             <p className="text-3xl font-bold text-foreground mb-2">4</p>
             <p className="text-xs text-emerald-600 font-medium">Well diversified</p>
+          </Card>
+        </div>
+
+        {/* ANALYTICS CHARTS */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-12">
+          {/* Revenue Distribution Pie */}
+          <Card className="p-6">
+            <h3 className="text-lg font-bold text-foreground mb-4">Revenue Distribution</h3>
+            <ResponsiveContainer width="100%" height={250}>
+              <PieChart>
+                <Pie
+                  data={revenueSources}
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={80}
+                  dataKey="amount"
+                  label={({ category, percentage }) => `${category}: ${percentage}%`}
+                >
+                  <Cell fill="#3b82f6" />
+                  <Cell fill="#10b981" />
+                  <Cell fill="#f59e0b" />
+                  <Cell fill="#8b5cf6" />
+                </Pie>
+                <Tooltip formatter={(value) => `₹${value.toLocaleString('en-IN')}`} />
+              </PieChart>
+            </ResponsiveContainer>
+          </Card>
+
+          {/* Revenue Trend */}
+          <Card className="p-6">
+            <h3 className="text-lg font-bold text-foreground mb-4">Revenue Trend</h3>
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={revenueSources.map(s => ({ name: s.category, revenue: s.amount }))}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="name" stroke="#64748b" />
+                <YAxis stroke="#64748b" />
+                <Tooltip formatter={(value) => `₹${value.toLocaleString('en-IN')}`} />
+                <Bar dataKey="revenue" fill="#3b82f6" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </Card>
         </div>
 

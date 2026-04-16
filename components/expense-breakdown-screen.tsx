@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { ArrowLeft, TrendingDown } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { DateRangeFilter, type DateRange } from './date-range-filter';
 
 interface ExpenseCategory {
@@ -144,6 +145,46 @@ export function ExpenseBreakdownScreen({ onNavigate }: ExpenseBreakdownScreenPro
             <p className="text-sm text-red-700 font-medium mb-2">Categories Over Budget</p>
             <p className="text-3xl font-bold text-red-600 mb-2">{overBudget.length}</p>
             <p className="text-xs text-red-700">Action needed</p>
+          </Card>
+        </div>
+
+        {/* ANALYTICS CHARTS */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-12">
+          {/* Expense Distribution Pie */}
+          <Card className="p-6">
+            <h3 className="text-lg font-bold text-foreground mb-4">Expense Distribution</h3>
+            <ResponsiveContainer width="100%" height={250}>
+              <PieChart>
+                <Pie
+                  data={expenseCategories}
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={80}
+                  dataKey="amount"
+                  label={({ category, percentage }) => `${category}: ${percentage}%`}
+                >
+                  <Cell fill="#ef4444" />
+                  <Cell fill="#f97316" />
+                  <Cell fill="#f59e0b" />
+                  <Cell fill="#eab308" />
+                </Pie>
+                <Tooltip formatter={(value) => `₹${value.toLocaleString('en-IN')}`} />
+              </PieChart>
+            </ResponsiveContainer>
+          </Card>
+
+          {/* Expense by Category Bars */}
+          <Card className="p-6">
+            <h3 className="text-lg font-bold text-foreground mb-4">Expenses by Category</h3>
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={expenseCategories.map(c => ({ name: c.category, amount: c.amount }))}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="name" stroke="#64748b" />
+                <YAxis stroke="#64748b" />
+                <Tooltip formatter={(value) => `₹${value.toLocaleString('en-IN')}`} />
+                <Bar dataKey="amount" fill="#ef4444" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </Card>
         </div>
 

@@ -7,6 +7,7 @@ import {
   AlertCircle, TrendingUp, TrendingDown, DollarSign, Calendar, AlertTriangle, 
   CheckCircle2, Eye, FileText, BarChart3, PieChart, ArrowRight, Zap, Clock, Landmark, Boxes
 } from 'lucide-react';
+import { LineChart, Line, BarChart, Bar, PieChart as RechartsPI, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart } from 'recharts';
 import { useAppState } from '@/context/app-state';
 import { calculateRunway, calculateHealthScore, calculateDSO } from '@/lib/calculations';
 import { getSupabaseClient } from '@/lib/supabase/client';
@@ -384,6 +385,64 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
               </p>
             </div>
           </Card>
+        </div>
+
+        {/* SECTION 2B: VISUAL ANALYTICS */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Chart 1: 7-Day Cash Flow */}
+          <Card className="p-6 border border-slate-200 shadow-sm">
+            <h3 className="text-lg font-bold text-slate-900 mb-4">7-Day Cash Flow</h3>
+            <ResponsiveContainer width="100%" height={250}>
+              <ComposedChart data={[
+                { day: 'Mon', income: 45000, expense: 32000, net: 13000 },
+                { day: 'Tue', income: 52000, expense: 38000, net: 14000 },
+                { day: 'Wed', income: 38000, expense: 42000, net: -4000 },
+                { day: 'Thu', income: 61000, expense: 45000, net: 16000 },
+                { day: 'Fri', income: 55000, expense: 35000, net: 20000 },
+                { day: 'Sat', income: 28000, expense: 25000, net: 3000 },
+                { day: 'Sun', income: 32000, expense: 28000, net: 4000 },
+              ]}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="day" stroke="#64748b" />
+                <YAxis stroke="#64748b" />
+                <Tooltip formatter={(value) => `₹${value.toLocaleString('en-IN')}`} />
+                <Legend />
+                <Bar dataKey="income" fill="#10b981" radius={[8, 8, 0, 0]} />
+                <Bar dataKey="expense" fill="#ef4444" radius={[8, 8, 0, 0]} />
+                <Line type="monotone" dataKey="net" stroke="#3b82f6" strokeWidth={2} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </Card>
+
+          {/* Chart 2: Revenue Distribution */}
+          <Card className="p-6 border border-slate-200 shadow-sm">
+            <h3 className="text-lg font-bold text-slate-900 mb-4">Revenue by Category</h3>
+            <ResponsiveContainer width="100%" height={250}>
+              <RechartsPI>
+                <Pie
+                  data={[
+                    { name: 'Product Sales', value: 42000 },
+                    { name: 'Services', value: 28000 },
+                    { name: 'Subscriptions', value: 18000 },
+                    { name: 'Other', value: 8000 },
+                  ]}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={90}
+                  paddingAngle={2}
+                  dataKey="value"
+                  label={({ name, value }) => `${name}: ₹${(value / 1000).toFixed(0)}K`}
+                >
+                  <Cell fill="#3b82f6" />
+                  <Cell fill="#10b981" />
+                  <Cell fill="#f59e0b" />
+                  <Cell fill="#8b5cf6" />
+                </Pie>
+                <Tooltip formatter={(value) => `₹${value.toLocaleString('en-IN')}`} />
+              </RechartsPI>
+            </ResponsiveContainer>
+          </Chart>
         </div>
 
         {/* SECTION 3: ACTION CENTER */}
