@@ -275,366 +275,329 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
   };
 
   return (
-    <div className="w-full h-full overflow-auto p-8 bg-gradient-to-br from-slate-50 to-slate-100">
-      <div className="max-w-7xl mx-auto space-y-8">
-
-        {/* SECTION 1: CEO SUMMARY */}
-        <div className="bg-white rounded-xl p-8 border border-slate-200 shadow-sm">
-          <div className="flex items-start justify-between gap-6">
-            <div className="flex items-start gap-4 flex-1">
-              <div className="p-3 bg-blue-50 rounded-lg">
-                <Zap className="w-6 h-6 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-lg text-slate-700 leading-relaxed">
-                  <span className="font-semibold text-slate-900">Today your business generated ₹{todayIncome.toLocaleString('en-IN')}</span>,
-                  {' '}<span className="text-slate-600">spent ₹{todayExpense.toLocaleString('en-IN')}, and currently has</span>
-                  {' '}<span className="font-semibold text-green-700">₹{cashBalance.toLocaleString('en-IN')} in cash</span>
-                  {' '}<span className="text-slate-600">with</span>
-                  {' '}<span className="font-semibold text-slate-900">{runway.toFixed(1)} months of runway</span>.
-                </p>
-              </div>
+    <div className="w-full h-full overflow-auto bg-slate-950">
+      <div className="max-w-7xl mx-auto">
+        
+        {/* HERO STRIP - Full Width Top Metrics */}
+        <div className="bg-gradient-to-r from-slate-900 to-slate-800 border-b border-slate-700">
+          <div className="px-8 py-8 grid grid-cols-2 md:grid-cols-4 gap-8">
+            {/* Metric 1: Cash Available */}
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-slate-400 uppercase tracking-wide">Cash Available</p>
+              <p className="text-3xl md:text-4xl font-bold text-white">₹{(cashBalance / 100000).toFixed(2)}L</p>
+              <div className="h-1 w-16 bg-green-500 rounded-full"></div>
+            </div>
+            
+            {/* Metric 2: Monthly Burn */}
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-slate-400 uppercase tracking-wide">Monthly Burn</p>
+              <p className="text-3xl md:text-4xl font-bold text-red-400">₹{(monthlyBurn / 100000).toFixed(2)}L</p>
+              <div className="h-1 w-16 bg-red-500 rounded-full"></div>
+            </div>
+            
+            {/* Metric 3: Runway */}
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-slate-400 uppercase tracking-wide">Runway</p>
+              <p className="text-3xl md:text-4xl font-bold text-yellow-400">{runway.toFixed(1)}mo</p>
+              <div className="h-1 w-16 bg-yellow-500 rounded-full"></div>
+            </div>
+            
+            {/* Metric 4: Health */}
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-slate-400 uppercase tracking-wide">Health Score</p>
+              <p className={`text-3xl md:text-4xl font-bold ${
+                healthScore >= 80 ? 'text-green-400' : 
+                healthScore >= 60 ? 'text-yellow-400' : 
+                'text-red-400'
+              }`}>{healthScore}/100</p>
+              <div className={`h-1 w-16 rounded-full ${
+                healthScore >= 80 ? 'bg-green-500' : 
+                healthScore >= 60 ? 'bg-yellow-500' : 
+                'bg-red-500'
+              }`}></div>
             </div>
           </div>
         </div>
 
-        {/* SECTION 2: CORE CEO METRICS */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Card 1: Cash Position */}
-          <Card className="p-8 border border-slate-200 shadow-sm hover:shadow-md transition-shadow bg-white">
-            <div className="flex items-start justify-between mb-6">
-              <div>
-                <p className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">Cash Position</p>
-                <p className="text-4xl font-bold text-slate-900">₹{(cashBalance / 100000).toFixed(2)}L</p>
-              </div>
-              <div className="p-3 bg-green-50 rounded-lg">
-                <DollarSign className="w-6 h-6 text-green-600" />
-              </div>
-            </div>
-            <div className="border-t border-slate-200 pt-4 space-y-2">
-              <p className="text-sm text-slate-600">
-                Runway: <span className="font-semibold text-slate-900">{runway.toFixed(1)} months</span>
-              </p>
-              <p className="text-sm text-slate-600 flex items-center gap-1">
-                {monthlyNetCashFlow >= 0 ? (
-                  <TrendingUp className="w-4 h-4 text-green-600" />
-                ) : (
-                  <TrendingDown className="w-4 h-4 text-red-600" />
-                )}
-                <span className={monthlyNetCashFlow >= 0 ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
-                  This month net: {monthlyNetCashFlow >= 0 ? '+' : '-'}₹{Math.abs(monthlyNetCashFlow).toLocaleString('en-IN')}
-                </span>
-              </p>
-            </div>
-          </Card>
+        <div className="p-8 space-y-8">
 
-          {/* Card 2: Net Cash Flow Today */}
-          <Card className="p-8 border border-slate-200 shadow-sm hover:shadow-md transition-shadow bg-white">
-            <div className="flex items-start justify-between mb-6">
-              <div>
-                <p className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">Today's Cash Flow</p>
-                <p className="text-4xl font-bold text-slate-900">₹{todayNet.toLocaleString('en-IN')}</p>
+        {/* SECTION 2: NEEDS ATTENTION - Enhanced */}
+        <div className="space-y-4">
+          <h2 className="text-2xl font-bold text-white">Needs Attention</h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Urgent Section */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-6 bg-red-500 rounded"></div>
+                <h3 className="font-semibold text-white text-lg">Urgent</h3>
               </div>
-              <div className={`p-3 rounded-lg ${todayNet >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
-                {todayNet >= 0 ? (
-                  <TrendingUp className="w-6 h-6 text-green-600" />
+              
+              <Card className="p-6 border-l-4 border-l-red-500 bg-slate-800 border border-slate-700">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="font-semibold text-white text-sm uppercase">Overdue Invoices</p>
+                  <span className="text-2xl font-bold text-red-400">{overdueInvoices}</span>
+                </div>
+                <div className="w-full bg-slate-700 rounded-full h-2">
+                  <div className="bg-red-500 h-2 rounded-full" style={{ width: '60%' }}></div>
+                </div>
+                <p className="text-xs text-slate-400 mt-3">Action: Collect outstanding payments</p>
+              </Card>
+            </div>
+
+            {/* Warning Section */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-6 bg-yellow-500 rounded"></div>
+                <h3 className="font-semibold text-white text-lg">Warnings</h3>
+              </div>
+              
+              {pendingApprovalCount > 0 && (
+                <Card className="p-6 border-l-4 border-l-yellow-500 bg-slate-800 border border-slate-700">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="font-semibold text-white text-sm uppercase">Pending Approvals</p>
+                    <span className="text-2xl font-bold text-yellow-400">₹{(pendingApprovalAmount / 100000).toFixed(2)}L</span>
+                  </div>
+                  <p className="text-xs text-slate-400">{pendingApprovalCount} items awaiting approval</p>
+                </Card>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* SECTION 3: CASH FLOW SECTION */}
+        <div className="space-y-4">
+          <h2 className="text-2xl font-bold text-white">Cash Flow</h2>
+          
+          <div className="grid grid-cols-3 gap-4">
+            {/* Money In */}
+            <Card className="p-6 bg-slate-800 border border-slate-700">
+              <p className="text-sm font-semibold text-slate-400 uppercase mb-2">Money In (Today)</p>
+              <p className="text-2xl font-bold text-green-400">₹{todayIncome.toLocaleString('en-IN')}</p>
+              <div className="w-full bg-slate-700 rounded-full h-1 mt-4">
+                <div className="bg-green-500 h-1 rounded-full" style={{ width: '70%' }}></div>
+              </div>
+            </Card>
+
+            {/* Money Out */}
+            <Card className="p-6 bg-slate-800 border border-slate-700">
+              <p className="text-sm font-semibold text-slate-400 uppercase mb-2">Money Out (Today)</p>
+              <p className="text-2xl font-bold text-red-400">₹{todayExpense.toLocaleString('en-IN')}</p>
+              <div className="w-full bg-slate-700 rounded-full h-1 mt-4">
+                <div className="bg-red-500 h-1 rounded-full" style={{ width: '45%' }}></div>
+              </div>
+            </Card>
+
+            {/* Net Flow */}
+            <Card className="p-6 bg-slate-800 border border-slate-700">
+              <p className="text-sm font-semibold text-slate-400 uppercase mb-2">Net Flow (Today)</p>
+              <p className={`text-2xl font-bold ${todayNet >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {todayNet >= 0 ? '+' : '-'}₹{Math.abs(todayNet).toLocaleString('en-IN')}
+              </p>
+              <div className="w-full bg-slate-700 rounded-full h-1 mt-4">
+                <div className={`h-1 rounded-full ${todayNet >= 0 ? 'bg-green-500' : 'bg-red-500'}`} style={{ width: '65%' }}></div>
+              </div>
+            </Card>
+          </div>
+        </div>
+
+        {/* SECTION 4: EXPENSE BREAKDOWN */}
+        <div className="space-y-4">
+          <h2 className="text-2xl font-bold text-white">Monthly Breakdown</h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Left: Revenue vs Expense */}
+            <Card className="p-6 bg-slate-800 border border-slate-700">
+              <div className="space-y-4">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-semibold text-slate-300">Revenue</p>
+                    <p className="text-lg font-bold text-green-400">₹{(monthlyRevenue / 100000).toFixed(2)}L</p>
+                  </div>
+                  <div className="w-full bg-slate-700 rounded-full h-2">
+                    <div className="bg-green-500 h-2 rounded-full" style={{ width: '85%' }}></div>
+                  </div>
+                </div>
+                
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-semibold text-slate-300">Expenses</p>
+                    <p className="text-lg font-bold text-red-400">₹{(monthlyBurn / 100000).toFixed(2)}L</p>
+                  </div>
+                  <div className="w-full bg-slate-700 rounded-full h-2">
+                    <div className="bg-red-500 h-2 rounded-full" style={{ width: '60%' }}></div>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-600 pt-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-slate-300">Net (This Month)</p>
+                    <p className={`text-lg font-bold ${monthlyNetCashFlow >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {monthlyNetCashFlow >= 0 ? '+' : '-'}₹{Math.abs(monthlyNetCashFlow).toLocaleString('en-IN')}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            {/* Right: Cash Distribution by Account */}
+            <Card className="p-6 bg-slate-800 border border-slate-700">
+              <h3 className="font-semibold text-white mb-4">Cash by Account</h3>
+              <div className="space-y-3">
+                {effectiveBankAccounts.length > 0 ? (
+                  effectiveBankAccounts.map((account, idx) => (
+                    <div key={account.id || idx}>
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-sm text-slate-300">{account.accountName || 'Account'}</p>
+                        <p className="font-semibold text-white">₹{(Number(account.balance ?? 0) / 100000).toFixed(2)}L</p>
+                      </div>
+                      <div className="w-full bg-slate-700 rounded-full h-2">
+                        <div 
+                          className="bg-blue-500 h-2 rounded-full"
+                          style={{ width: `${Math.min((Number(account.balance ?? 0) / cashBalance) * 100, 100)}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  ))
                 ) : (
-                  <TrendingDown className="w-6 h-6 text-red-600" />
+                  <p className="text-sm text-slate-400">No accounts connected</p>
                 )}
               </div>
-            </div>
-            <div className="border-t border-slate-200 pt-4 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-600">Money In:</span>
-                <span className="font-semibold text-green-600">+₹{todayIncome.toLocaleString('en-IN')}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-600">Money Out:</span>
-                <span className="font-semibold text-red-600">-₹{todayExpense.toLocaleString('en-IN')}</span>
-              </div>
-            </div>
-          </Card>
+            </Card>
+          </div>
+        </div>
 
-          {/* Card 3: Business Health */}
-          <Card className="p-8 border border-slate-200 shadow-sm hover:shadow-md transition-shadow bg-white">
-            <div className="flex items-start justify-between mb-6">
-              <div>
-                <p className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">Business Health</p>
-                <p className="text-4xl font-bold text-slate-900">{healthScore}/100</p>
-              </div>
-              <div className={`p-3 rounded-lg ${
-                healthScore >= 80 ? 'bg-green-50' : 
-                healthScore >= 60 ? 'bg-orange-50' : 
-                'bg-red-50'
+        {/* SECTION 5: INSIGHTS */}
+        <div className="space-y-4">
+          <h2 className="text-2xl font-bold text-white">Insights</h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Insight 1: Runway Status */}
+            <Card className="p-4 bg-slate-800 border border-slate-700">
+              <p className="text-sm text-slate-400 mb-2">Runway Status</p>
+              <p className={`font-semibold ${
+                runway > 6 ? 'text-green-400' :
+                runway > 3 ? 'text-yellow-400' :
+                'text-red-400'
               }`}>
-                <CheckCircle2 className={`w-6 h-6 ${
-                  healthScore >= 80 ? 'text-green-600' : 
-                  healthScore >= 60 ? 'text-orange-600' : 
-                  'text-red-600'
-                }`} />
-              </div>
-            </div>
-            <div className="border-t border-slate-200 pt-4">
-              <p className={`text-sm font-semibold px-3 py-1 rounded inline-block ${
-                healthScore >= 80 ? 'bg-green-50 text-green-700' : 
-                healthScore >= 60 ? 'bg-orange-50 text-orange-700' : 
-                'bg-red-50 text-red-700'
+                {runway > 6 ? '✓ Healthy runway' : runway > 3 ? '⚠ Limited runway' : '✗ Critical runway'}
+              </p>
+              <p className="text-xs text-slate-400 mt-1">Current: {runway.toFixed(1)} months of operations</p>
+            </Card>
+
+            {/* Insight 2: Compliance */}
+            {complianceMessage && (
+              <Card className="p-4 bg-slate-800 border border-slate-700">
+                <p className="text-sm text-slate-400 mb-2">Compliance</p>
+                <p className="font-semibold text-slate-200">{complianceMessage}</p>
+              </Card>
+            )}
+
+            {/* Insight 3: Health Trend */}
+            <Card className="p-4 bg-slate-800 border border-slate-700">
+              <p className="text-sm text-slate-400 mb-2">Business Health</p>
+              <p className={`font-semibold ${
+                healthScore >= 80 ? 'text-green-400' : 
+                healthScore >= 60 ? 'text-yellow-400' : 
+                'text-red-400'
               }`}>
                 {getHealthStatus(healthScore)}
               </p>
-            </div>
-          </Card>
+              <p className="text-xs text-slate-400 mt-1">Score: {healthScore}/100</p>
+            </Card>
+          </div>
         </div>
 
-        {/* SECTION 3: ACTION CENTER */}
+        {/* SECTION 6: NAVIGATION CARDS */}
         <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5 text-amber-600" />
-            <h2 className="text-xl font-bold text-slate-900">Needs Attention</h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Alert 1: Overdue Invoices */}
-            <Card className="p-6 border border-red-200 bg-red-50 hover:shadow-md transition-shadow cursor-pointer">
-              <div className="flex items-start justify-between mb-4">
-                <div className="p-2 bg-red-100 rounded-lg">
-                  <AlertCircle className="w-5 h-5 text-red-600" />
-                </div>
-              </div>
-              <p className="font-semibold text-slate-900 mb-1">Overdue Invoices</p>
-              <p className="text-sm text-slate-600 mb-4">{overdueInvoices} invoices overdue</p>
-              <Button 
-                size="sm" 
-                variant="outline" 
-                className="text-red-600 border-red-300 hover:bg-red-100 text-xs"
-                onClick={() => handleCardClick('invoices')}
-              >
-                Review →
-              </Button>
-            </Card>
-
-            {/* Alert 2: Pending Approvals */}
-            <Card className="p-6 border border-orange-200 bg-orange-50 hover:shadow-md transition-shadow cursor-pointer">
-              <div className="flex items-start justify-between mb-4">
-                <div className="p-2 bg-orange-100 rounded-lg">
-                  <Clock className="w-5 h-5 text-orange-600" />
-                </div>
-              </div>
-              <p className="font-semibold text-slate-900 mb-1">Pending Approvals</p>
-              <p className="text-sm text-slate-600 mb-4">
-                ₹{pendingApprovalAmount.toLocaleString('en-IN')} pending across {pendingApprovalCount} request{pendingApprovalCount === 1 ? '' : 's'}
-              </p>
-              <Button 
-                size="sm" 
-                variant="outline" 
-                className="text-orange-600 border-orange-300 hover:bg-orange-100 text-xs"
-                onClick={() => handleCardClick('approval-queue')}
-              >
-                Approve →
-              </Button>
-            </Card>
-
-            {/* Alert 3: Compliance Due */}
-            <Card className="p-6 border border-orange-200 bg-orange-50 hover:shadow-md transition-shadow cursor-pointer">
-              <div className="flex items-start justify-between mb-4">
-                <div className="p-2 bg-orange-100 rounded-lg">
-                  <Calendar className="w-5 h-5 text-orange-600" />
-                </div>
-              </div>
-              <p className="font-semibold text-slate-900 mb-1">Compliance Due</p>
-              <p className="text-sm text-slate-600 mb-4">{complianceMessage}</p>
-              <Button 
-                size="sm" 
-                variant="outline" 
-                className="text-orange-600 border-orange-300 hover:bg-orange-100 text-xs"
-                onClick={() => handleCardClick('compliance-deadlines')}
-              >
-                View →
-              </Button>
-            </Card>
-
-            {/* Alert 4: Budget Alert */}
-            <Card className="p-6 border border-yellow-200 bg-yellow-50 hover:shadow-md transition-shadow cursor-pointer">
-              <div className="flex items-start justify-between mb-4">
-                <div className="p-2 bg-yellow-100 rounded-lg">
-                  <Zap className="w-5 h-5 text-yellow-600" />
-                </div>
-              </div>
-              <p className="font-semibold text-slate-900 mb-1">Budget Alert</p>
-              <p className="text-sm text-slate-600 mb-4">Marketing budget 85% used</p>
-              <Button 
-                size="sm" 
-                variant="outline" 
-                className="text-yellow-600 border-yellow-300 hover:bg-yellow-100 text-xs"
-                onClick={() => handleCardClick('budget-management')}
-              >
-                Review →
-              </Button>
-            </Card>
-          </div>
-        </div>
-
-        {/* SECTION 4: BANK ACCOUNTS & BUCKET ALLOCATION */}
-        <div className="space-y-4 border-t border-slate-200 pt-8">
-          <div className="flex items-center gap-2">
-            <Landmark className="w-5 h-5 text-blue-600" />
-            <h2 className="text-xl font-bold text-slate-900">Cash & Accounts</h2>
-          </div>
+          <h2 className="text-2xl font-bold text-white">Explore</h2>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Bank Accounts */}
-            <Card className="p-6 border border-slate-200 bg-white hover:shadow-md transition-shadow cursor-pointer">
+            {/* Invoices */}
+            <Card className="p-6 bg-slate-800 border border-slate-700 hover:border-slate-600 transition cursor-pointer" onClick={() => handleCardClick('invoices')}>
               <div className="flex items-start justify-between mb-4">
                 <div>
-                  <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Bank Accounts</p>
-                  <p className="text-2xl font-bold text-slate-900">{effectiveBankAccounts.length}</p>
+                  <p className="text-sm font-semibold text-slate-400 mb-2">Invoices</p>
+                  <p className="text-2xl font-bold text-white">Manage</p>
                 </div>
-                <div className="p-3 bg-blue-50 rounded-lg">
-                  <Landmark className="w-5 h-5 text-blue-600" />
+                <div className="p-2 bg-slate-700 rounded-lg">
+                  <FileText className="w-5 h-5 text-slate-300" />
                 </div>
               </div>
-              <div className="border-t border-slate-200 pt-3 space-y-2">
-                {effectiveBankAccounts.slice(0, 2).map(acc => (
-                  <div key={acc.id} className="flex justify-between items-center text-sm">
-                    <span className="text-slate-600">{acc.accountName}</span>
-                    <span className="font-semibold text-slate-900">₹{(acc.balance / 100000).toFixed(1)}L</span>
-                  </div>
-                ))}
-                {effectiveBankAccounts.length > 2 && (
-                  <p className="text-xs text-slate-500 pt-2">+{effectiveBankAccounts.length - 2} more accounts</p>
-                )}
-              </div>
-              <Button 
-                size="sm" 
-                variant="outline" 
-                className="text-xs mt-4 w-full"
-                onClick={() => handleCardClick('bank-accounts')}
-              >
-                Manage Accounts →
-              </Button>
+              <p className="text-xs text-slate-400">View and track invoices</p>
             </Card>
 
-            {/* Bucket Allocations */}
-            <Card className="p-6 border border-slate-200 bg-white hover:shadow-md transition-shadow cursor-pointer">
+            {/* Budget */}
+            <Card className="p-6 bg-slate-800 border border-slate-700 hover:border-slate-600 transition cursor-pointer" onClick={() => handleCardClick('budget-management')}>
               <div className="flex items-start justify-between mb-4">
                 <div>
-                  <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Bucket Allocation</p>
-                  <p className="text-2xl font-bold text-slate-900">{state.bankAccountMappings.length}</p>
+                  <p className="text-sm font-semibold text-slate-400 mb-2">Budget</p>
+                  <p className="text-2xl font-bold text-white">Track</p>
                 </div>
-                <div className="p-3 bg-green-50 rounded-lg">
-                  <Boxes className="w-5 h-5 text-green-600" />
+                <div className="p-2 bg-slate-700 rounded-lg">
+                  <BarChart3 className="w-5 h-5 text-slate-300" />
                 </div>
               </div>
-              <div className="border-t border-slate-200 pt-3">
-                <div className="space-y-1 text-sm">
-                  {state.bankAccountMappings.slice(0, 2).map(mapping => {
-                    const bucket = ['GST', 'Operating', 'Reserve', 'CapEx'][['gst', 'operating', 'reserve', 'capex'].indexOf(mapping.bucketId)] || mapping.bucketId;
-                    const account = effectiveBankAccounts.find(a => a.id === mapping.bankAccountId);
-                    return (
-                      <p key={mapping.id} className="flex justify-between text-slate-600">
-                        <span>{bucket}</span>
-                        <span className="text-slate-900 font-medium">{mapping.allocationPercentage}%</span>
-                      </p>
-                    );
-                  })}
-                </div>
-                {state.bankAccountMappings.length > 2 && (
-                  <p className="text-xs text-slate-500 pt-2">+{state.bankAccountMappings.length - 2} more mappings</p>
-                )}
-              </div>
-              <Button 
-                size="sm" 
-                variant="outline" 
-                className="text-xs mt-4 w-full"
-                onClick={() => handleCardClick('bucket-allocation')}
-              >
-                Configure →
-              </Button>
+              <p className="text-xs text-slate-400">Monitor spending limits</p>
             </Card>
 
-            {/* Recent Transfers */}
-            <Card className="p-6 border border-slate-200 bg-white hover:shadow-md transition-shadow cursor-pointer">
+            {/* Accounts */}
+            <Card className="p-6 bg-slate-800 border border-slate-700 hover:border-slate-600 transition cursor-pointer" onClick={() => handleCardClick('bank-accounts')}>
               <div className="flex items-start justify-between mb-4">
                 <div>
-                  <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Recent Transfers</p>
-                  <p className="text-2xl font-bold text-slate-900">{state.interAccountTransfers.length}</p>
+                  <p className="text-sm font-semibold text-slate-400 mb-2">Bank Accounts</p>
+                  <p className="text-2xl font-bold text-white">Manage</p>
                 </div>
-                <div className="p-3 bg-purple-50 rounded-lg">
-                  <ArrowRight className="w-5 h-5 text-purple-600" />
+                <div className="p-2 bg-slate-700 rounded-lg">
+                  <Landmark className="w-5 h-5 text-slate-300" />
                 </div>
               </div>
-              <div className="border-t border-slate-200 pt-3">
-                <div className="space-y-2 text-sm">
-                  {state.interAccountTransfers.slice(-2).reverse().map(transfer => (
-                    <div key={transfer.id} className="flex justify-between">
-                      <span className="text-slate-600">{transfer.description}</span>
-                      <span className="font-semibold text-slate-900">₹{(transfer.amount / 1000).toFixed(0)}k</span>
-                    </div>
-                  ))}
+              <p className="text-xs text-slate-400">View all connected accounts</p>
+            </Card>
+
+            {/* Buckets */}
+            <Card className="p-6 bg-slate-800 border border-slate-700 hover:border-slate-600 transition cursor-pointer" onClick={() => handleCardClick('bucket-allocation')}>
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <p className="text-sm font-semibold text-slate-400 mb-2">Buckets</p>
+                  <p className="text-2xl font-bold text-white">Allocate</p>
                 </div>
-                {state.interAccountTransfers.length === 0 && (
-                  <p className="text-sm text-slate-500">No transfers yet</p>
-                )}
+                <div className="p-2 bg-slate-700 rounded-lg">
+                  <Boxes className="w-5 h-5 text-slate-300" />
+                </div>
               </div>
+              <p className="text-xs text-slate-400">Manage cash distribution</p>
+            </Card>
+
+            {/* Revenue */}
+            <Card className="p-6 bg-slate-800 border border-slate-700 hover:border-slate-600 transition cursor-pointer" onClick={() => handleCardClick('revenue-breakdown')}>
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <p className="text-sm font-semibold text-slate-400 mb-2">Revenue</p>
+                  <p className="text-2xl font-bold text-white">Analyze</p>
+                </div>
+                <div className="p-2 bg-slate-700 rounded-lg">
+                  <TrendingUp className="w-5 h-5 text-slate-300" />
+                </div>
+              </div>
+              <p className="text-xs text-slate-400">View revenue sources</p>
+            </Card>
+
+            {/* Expenses */}
+            <Card className="p-6 bg-slate-800 border border-slate-700 hover:border-slate-600 transition cursor-pointer" onClick={() => handleCardClick('expense-breakdown')}>
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <p className="text-sm font-semibold text-slate-400 mb-2">Expenses</p>
+                  <p className="text-2xl font-bold text-white">Track</p>
+                </div>
+                <div className="p-2 bg-slate-700 rounded-lg">
+                  <TrendingDown className="w-5 h-5 text-slate-300" />
+                </div>
+              </div>
+              <p className="text-xs text-slate-400">Breakdown by category</p>
             </Card>
           </div>
         </div>
 
-        {/* SECTION 5: QUICK REPORT ACCESS */}
-        <div className="space-y-4">
-          <h2 className="text-xl font-bold text-slate-900">Quick Access</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Revenue Breakdown */}
-            <Card 
-              className="p-6 border border-slate-200 bg-white hover:shadow-md transition-shadow cursor-pointer"
-              onClick={() => handleCardClick('revenue-breakdown')}
-            >
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-blue-50 rounded-lg">
-                  <PieChart className="w-6 h-6 text-blue-600" />
-                </div>
-                <div>
-                  <p className="font-semibold text-slate-900">Revenue Breakdown</p>
-                  <p className="text-sm text-slate-600">By source & type</p>
-                </div>
-                <ArrowRight className="w-4 h-4 text-slate-400 ml-auto" />
-              </div>
-            </Card>
-
-            {/* Expense Breakdown */}
-            <Card 
-              className="p-6 border border-slate-200 bg-white hover:shadow-md transition-shadow cursor-pointer"
-              onClick={() => handleCardClick('expense-breakdown')}
-            >
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-purple-50 rounded-lg">
-                  <BarChart3 className="w-6 h-6 text-purple-600" />
-                </div>
-                <div>
-                  <p className="font-semibold text-slate-900">Expense Breakdown</p>
-                  <p className="text-sm text-slate-600">By category</p>
-                </div>
-                <ArrowRight className="w-4 h-4 text-slate-400 ml-auto" />
-              </div>
-            </Card>
-
-            {/* Cash Flow Projection */}
-            <Card 
-              className="p-6 border border-slate-200 bg-white hover:shadow-md transition-shadow cursor-pointer"
-              onClick={() => handleCardClick('cash-flow-projection')}
-            >
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-green-50 rounded-lg">
-                  <FileText className="w-6 h-6 text-green-600" />
-                </div>
-                <div>
-                  <p className="font-semibold text-slate-900">Cash Flow Projection</p>
-                  <p className="text-sm text-slate-600">30-day forecast</p>
-                </div>
-                <ArrowRight className="w-4 h-4 text-slate-400 ml-auto" />
-              </div>
-            </Card>
-          </div>
         </div>
       </div>
     </div>
