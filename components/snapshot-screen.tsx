@@ -242,6 +242,31 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
     return 'Critical';
   };
 
+  // Generate 7-day cash flow data from transactions
+  const last7Days = Array.from({ length: 7 }, (_, i) => {
+    const date = new Date(todayDate);
+    date.setDate(date.getDate() - (6 - i));
+    return date.toISOString().split('T')[0];
+  });
+
+  const dailyCashFlow = last7Days.map(date => {
+    const dayTransactions = effectiveTransactions.filter(
+      (t) => t.date === date && isPostedCashTransaction(t)
+    );
+    const income = dayTransactions
+      .filter(t => t.isIncome)
+      .reduce((sum, t) => sum + t.amount, 0);
+    const expense = dayTransactions
+      .filter(t => !t.isIncome)
+      .reduce((sum, t) => sum + t.amount, 0);
+    return {
+      date: new Date(date).toLocaleDateString('en-IN', { weekday: 'short' }),
+      balance: cashBalance,
+      income,
+      expense,
+    };
+  });
+
   // Alerts from live state
   const overdueInvoices = state.invoices.filter(inv => {
     const dueDate = new Date(inv.dueDate);

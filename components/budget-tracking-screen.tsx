@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { Plus, Edit2, Trash2, AlertTriangle, TrendingUp, Target, X, DollarSign, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { getSupabaseClient } from '@/lib/supabase/client';
 import { useOrganization } from '@/context/organization-context';
 
@@ -341,128 +340,6 @@ export function BudgetTrackingScreen() {
             <div className="text-3xl font-semibold text-red-600">{stats.exceeded}</div>
           </Card>
         </div>
-
-        {/* ANALYTICS SECTION */}
-        {budgets.length > 0 && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-12">
-            {/* Chart 1: Budget Status Distribution */}
-            <Card className="p-6 border border-border">
-              <h3 className="text-lg font-bold text-foreground mb-4">Budget Status</h3>
-              <ResponsiveContainer width="100%" height={250}>
-                <PieChart>
-                  <Pie
-                    data={[
-                      { name: 'On Track', value: stats.onTrack },
-                      { name: 'At Risk', value: stats.atRisk },
-                      { name: 'Exceeded', value: stats.exceeded },
-                    ]}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={80}
-                    paddingAngle={2}
-                    dataKey="value"
-                    label={({ name, value }) => value > 0 ? `${name}: ${value}` : ''}
-                  >
-                    <Cell fill="#10b981" />
-                    <Cell fill="#f59e0b" />
-                    <Cell fill="#ef4444" />
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </Card>
-
-            {/* Chart 2: Budget vs Actual Bar Chart */}
-            <Card className="p-6 border border-border lg:col-span-2">
-              <h3 className="text-lg font-bold text-foreground mb-4">Budgeted vs Spent</h3>
-              <ResponsiveContainer width="100%" height={250}>
-                <BarChart
-                  data={budgets.slice(0, 8).map(b => ({
-                    name: b.category.substring(0, 12),
-                    Budgeted: b.budgetedAmount,
-                    Spent: b.actualSpent,
-                  }))}
-                  margin={{ bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="name" stroke="#6b7280" tick={{ fontSize: 10 }} />
-                  <YAxis stroke="#6b7280" tick={{ fontSize: 10 }} />
-                  <Tooltip formatter={(value) => `₹${(value / 1000).toFixed(0)}K`} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="Budgeted" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="Spent" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </Card>
-          </div>
-        )}
-
-        {/* PROGRESS METRICS */}
-        {budgets.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-            {/* Metric 1: Overall Budget Utilization */}
-            <Card className="p-6 border border-border">
-              <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">Overall Utilization</p>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-2xl font-bold text-foreground">
-                  {stats.totalBudget > 0 ? ((stats.totalSpent / stats.totalBudget) * 100).toFixed(0) : 0}%
-                </span>
-              </div>
-              <div className="w-full bg-muted rounded-full h-2">
-                <div 
-                  className={`h-2 rounded-full transition-all ${
-                    (stats.totalSpent / stats.totalBudget) * 100 <= 75 ? 'bg-green-500' :
-                    (stats.totalSpent / stats.totalBudget) * 100 <= 100 ? 'bg-yellow-500' :
-                    'bg-red-500'
-                  }`}
-                  style={{ width: `${Math.min((stats.totalSpent / stats.totalBudget) * 100, 100)}%` }}
-                />
-              </div>
-              <p className="text-xs text-muted-foreground mt-3">
-                ₹{stats.totalSpent.toLocaleString('en-IN')} of ₹{stats.totalBudget.toLocaleString('en-IN')}
-              </p>
-            </Card>
-
-            {/* Metric 2: On Track Percentage */}
-            <Card className="p-6 border border-border">
-              <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">On Track Rate</p>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-2xl font-bold text-green-600">
-                  {budgets.length > 0 ? ((stats.onTrack / budgets.length) * 100).toFixed(0) : 0}%
-                </span>
-              </div>
-              <div className="w-full bg-muted rounded-full h-2">
-                <div 
-                  className="h-2 rounded-full bg-green-500 transition-all"
-                  style={{ width: `${budgets.length > 0 ? ((stats.onTrack / budgets.length) * 100) : 0}%` }}
-                />
-              </div>
-              <p className="text-xs text-muted-foreground mt-3">
-                {stats.onTrack} of {budgets.length} budgets on track
-              </p>
-            </Card>
-
-            {/* Metric 3: At Risk Indicator */}
-            <Card className="p-6 border border-border">
-              <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">Risk Level</p>
-              <div className="flex items-center justify-between mb-3">
-                <span className={`text-2xl font-bold ${stats.atRisk + stats.exceeded > 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                  {stats.atRisk + stats.exceeded}
-                </span>
-              </div>
-              <div className="w-full bg-muted rounded-full h-2">
-                <div 
-                  className={`h-2 rounded-full ${stats.atRisk + stats.exceeded > 0 ? 'bg-orange-500' : 'bg-green-500'} transition-all`}
-                  style={{ width: `${budgets.length > 0 ? ((Math.max(stats.atRisk + stats.exceeded, 1) / budgets.length) * 100) : 0}%` }}
-                />
-              </div>
-              <p className="text-xs text-muted-foreground mt-3">
-                {stats.atRisk} at risk, {stats.exceeded} exceeded
-              </p>
-            </Card>
-          </div>
-        )}
 
         {/* Budgets List */}
         <div className="space-y-4">
