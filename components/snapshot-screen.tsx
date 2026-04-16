@@ -7,7 +7,6 @@ import {
   AlertCircle, TrendingUp, TrendingDown, DollarSign, Calendar, AlertTriangle, 
   CheckCircle2, Eye, FileText, BarChart3, PieChart, ArrowRight, Zap, Clock, Landmark, Boxes
 } from 'lucide-react';
-import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useAppState } from '@/context/app-state';
 import { calculateRunway, calculateHealthScore, calculateDSO } from '@/lib/calculations';
 import { getSupabaseClient } from '@/lib/supabase/client';
@@ -242,31 +241,6 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
     return 'Critical';
   };
 
-  // Generate 7-day cash flow data from transactions
-  const last7Days = Array.from({ length: 7 }, (_, i) => {
-    const date = new Date(todayDate);
-    date.setDate(date.getDate() - (6 - i));
-    return date.toISOString().split('T')[0];
-  });
-
-  const dailyCashFlow = last7Days.map(date => {
-    const dayTransactions = effectiveTransactions.filter(
-      (t) => t.date === date && isPostedCashTransaction(t)
-    );
-    const income = dayTransactions
-      .filter(t => t.isIncome)
-      .reduce((sum, t) => sum + t.amount, 0);
-    const expense = dayTransactions
-      .filter(t => !t.isIncome)
-      .reduce((sum, t) => sum + t.amount, 0);
-    return {
-      date: new Date(date).toLocaleDateString('en-IN', { weekday: 'short' }),
-      balance: cashBalance,
-      income,
-      expense,
-    };
-  });
-
   // Alerts from live state
   const overdueInvoices = state.invoices.filter(inv => {
     const dueDate = new Date(inv.dueDate);
@@ -408,137 +382,6 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
               }`}>
                 {getHealthStatus(healthScore)}
               </p>
-            </div>
-          </Card>
-        </div>
-
-        {/* SECTION 2B: VISUAL ANALYTICS */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Chart 1: Bucket Allocation Donut */}
-          <Card className="p-6 border border-slate-200 bg-white">
-            <h3 className="text-lg font-bold text-slate-900 mb-4">Cash Allocation</h3>
-            <ResponsiveContainer width="100%" height={280}>
-              <PieChart>
-                <Pie
-                  data={state.bankAccountMappings.map(mapping => ({
-                    name: mapping.accountName || 'Unknown',
-                    value: mapping.allocationPercentage,
-                  }))}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={90}
-                  paddingAngle={2}
-                  dataKey="value"
-                  label={({ name, value }) => `${name}: ${value}%`}
-                >
-                  <Cell fill="#3b82f6" />
-                  <Cell fill="#10b981" />
-                  <Cell fill="#f59e0b" />
-                  <Cell fill="#8b5cf6" />
-                  <Cell fill="#ec4899" />
-                </Pie>
-                <Tooltip formatter={(value) => `${value}%`} />
-              </PieChart>
-            </ResponsiveContainer>
-          </Card>
-
-          {/* Chart 2: 7-Day Cash Flow Trend */}
-          <Card className="p-6 border border-slate-200 bg-white lg:col-span-2">
-            <h3 className="text-lg font-bold text-slate-900 mb-4">7-Day Cash Flow Trend</h3>
-            <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={dailyCashFlow.slice(-7)}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis 
-                  dataKey="date" 
-                  stroke="#64748b"
-                  tick={{ fontSize: 12 }}
-                />
-                <YAxis stroke="#64748b" tick={{ fontSize: 12 }} />
-                <Tooltip 
-                  formatter={(value) => `₹${value.toLocaleString('en-IN')}`}
-                  contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0' }}
-                />
-                <Legend />
-                <Line 
-                  type="monotone" 
-                  dataKey="balance" 
-                  stroke="#3b82f6" 
-                  strokeWidth={2}
-                  dot={{ fill: '#3b82f6', r: 4 }}
-                  activeDot={{ r: 6 }}
-                  name="Cash Balance"
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </Card>
-        </div>
-
-        {/* SECTION 2C: QUICK METRICS */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Progress 1: Runway Health */}
-          <Card className="p-6 border border-slate-200 bg-white">
-            <p className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-4">Runway Health</p>
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-2xl font-bold text-slate-900">{Math.min(runway * 20, 100).toFixed(0)}%</span>
-              <span className={`text-xs font-semibold px-2 py-1 rounded ${
-                runway > 6 ? 'bg-green-100 text-green-700' :
-                runway > 3 ? 'bg-orange-100 text-orange-700' :
-                'bg-red-100 text-red-700'
-              }`}>
-                {runway.toFixed(1)}mo
-              </span>
-            </div>
-            <div className="w-full bg-slate-200 rounded-full h-2">
-              <div 
-                className={`h-2 rounded-full transition-all ${
-                  runway > 6 ? 'bg-green-500' :
-                  runway > 3 ? 'bg-orange-500' :
-                  'bg-red-500'
-                }`}
-                style={{ width: `${Math.min(runway * 20, 100)}%` }}
-              />
-            </div>
-          </Card>
-
-          {/* Progress 2: Today's Net Cash Flow */}
-          <Card className="p-6 border border-slate-200 bg-white">
-            <p className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-4">Today Net Flow</p>
-            <div className="flex items-center justify-between mb-3">
-              <span className={`text-2xl font-bold ${todayNet >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {todayNet >= 0 ? '+' : '-'}₹{Math.abs(todayNet / 1000).toFixed(0)}K
-              </span>
-            </div>
-            <div className="w-full bg-slate-200 rounded-full h-2">
-              <div 
-                className={`h-2 rounded-full ${todayNet >= 0 ? 'bg-green-500' : 'bg-red-500'}`}
-                style={{ width: `${Math.min(Math.abs(todayNet) / 10000, 100)}%` }}
-              />
-            </div>
-          </Card>
-
-          {/* Progress 3: Business Health */}
-          <Card className="p-6 border border-slate-200 bg-white">
-            <p className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-4">Health Score</p>
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-2xl font-bold text-slate-900">{healthScore}%</span>
-              <span className={`text-xs font-semibold px-2 py-1 rounded ${
-                healthScore >= 80 ? 'bg-green-100 text-green-700' :
-                healthScore >= 60 ? 'bg-orange-100 text-orange-700' :
-                'bg-red-100 text-red-700'
-              }`}>
-                {getHealthStatus(healthScore)}
-              </span>
-            </div>
-            <div className="w-full bg-slate-200 rounded-full h-2">
-              <div 
-                className={`h-2 rounded-full ${
-                  healthScore >= 80 ? 'bg-green-500' :
-                  healthScore >= 60 ? 'bg-orange-500' :
-                  'bg-red-500'
-                }`}
-                style={{ width: `${healthScore}%` }}
-              />
             </div>
           </Card>
         </div>
