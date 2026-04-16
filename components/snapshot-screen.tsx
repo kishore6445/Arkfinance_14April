@@ -274,6 +274,8 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
     }
   };
 
+  console.log("[v0] Rendering new dark dashboard design");
+  
   return (
     <div className="w-full h-full overflow-auto bg-slate-950">
       <div className="max-w-7xl mx-auto">
