@@ -490,7 +490,7 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
                 <ResponsiveContainer width="100%" height="100%">
                   <RechartsPie data={effectiveBankAccounts.slice(0, 4).map((acc, idx) => ({
                     name: acc.accountName || `Account ${idx + 1}`,
-                    value: Math.round(Number(acc.balance || 0) / cashBalance * 100),
+                    value: Math.max(Math.round(Number(acc.balance || 0) / cashBalance * 100), 5),
                   }))} >
                     <Pie 
                       cx="50%" 
@@ -499,12 +499,12 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
                       outerRadius={100} 
                       paddingAngle={2} 
                       dataKey="value"
-                      label={({ name, value }) => `${name} ${value}%`}
+                      nameKey="name"
+                      label={({ name, value }) => `${name}`}
                     >
-                      <Cell fill="#3b82f6" />
-                      <Cell fill="#8b5cf6" />
-                      <Cell fill="#ec4899" />
-                      <Cell fill="#f59e0b" />
+                      {effectiveBankAccounts.slice(0, 4).map((_, idx) => (
+                        <Cell key={`cell-${idx}`} fill={['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b'][idx]} />
+                      ))}
                     </Pie>
                     <Tooltip formatter={(value) => `${value}%`} />
                   </RechartsPie>
@@ -518,11 +518,11 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
               <div style={{ width: '100%', height: 320 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <RechartsPie data={[
-                    { name: 'Salaries', value: 45, fill: '#ef4444' },
-                    { name: 'Operations', value: 25, fill: '#f59e0b' },
-                    { name: 'Infrastructure', value: 15, fill: '#3b82f6' },
-                    { name: 'Marketing', value: 10, fill: '#8b5cf6' },
-                    { name: 'Other', value: 5, fill: '#64748b' },
+                    { name: 'Salaries', value: 45 },
+                    { name: 'Operations', value: 25 },
+                    { name: 'Infrastructure', value: 15 },
+                    { name: 'Marketing', value: 10 },
+                    { name: 'Other', value: 5 },
                   ]}>
                     <Pie 
                       cx="50%" 
@@ -530,7 +530,8 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
                       innerRadius={70} 
                       outerRadius={120} 
                       paddingAngle={2} 
-                      dataKey="value" 
+                      dataKey="value"
+                      nameKey="name"
                       label={({ name, value }) => `${name} ${value}%`}
                     >
                       <Cell fill="#ef4444" />
