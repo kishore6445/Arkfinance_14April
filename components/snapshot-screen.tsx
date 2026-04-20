@@ -101,6 +101,11 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
             setLiveBankAccounts((bankPayload.accounts ?? []) as BankAccountApiRow[]);
             setBankLoaded(true);
           }
+        } else {
+          const errText = await bankRes.text();
+          console.log("[v0] bank-accounts API error:", bankRes.status, errText);
+          // still mark as loaded so charts render with fallback state data
+          if (isMounted) setBankLoaded(true);
         }
 
         if (txRes.ok) {
@@ -109,9 +114,14 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
             setLiveTransactions((txPayload.transactions ?? []) as TransactionApiRow[]);
             setTxLoaded(true);
           }
+        } else {
+          const errText = await txRes.text();
+          console.log("[v0] transactions API error:", txRes.status, errText);
+          if (isMounted) setTxLoaded(true);
         }
 
-      } catch {
+      } catch (err) {
+        console.log("[v0] snapshot fetch failed:", err);
         // Keep existing/fallback app state metrics when live fetch fails.
       }
     };
@@ -488,10 +498,22 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
               <h3 className="text-lg font-semibold text-slate-900 mb-4">Cash Distribution by Account</h3>
               <div style={{ width: '100%', height: 280 }}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <RechartsPie data={effectiveBankAccounts.slice(0, 4).map((acc, idx) => ({
-                    name: acc.accountName || `Account ${idx + 1}`,
-                    value: Math.max(Math.round(Number(acc.balance || 0) / cashBalance * 100), 5),
-                  }))} >
+                  <RechartsPie data={(() => {
+                    const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b'];
+                    const accounts = effectiveBankAccounts.slice(0, 4);
+                    if (accounts.length === 0 || cashBalance === 0) {
+                      return [
+                        { name: 'Operating', value: 60, color: '#3b82f6' },
+                        { name: 'Reserve', value: 25, color: '#8b5cf6' },
+                        { name: 'Tax', value: 15, color: '#ec4899' },
+                      ];
+                    }
+                    return accounts.map((acc, idx) => ({
+                      name: acc.accountName || `Account ${idx + 1}`,
+                      value: Math.max(Math.round(Number(acc.balance || 0) / cashBalance * 100), 5),
+                      color: COLORS[idx],
+                    }));
+                  })()}>
                     <Pie 
                       cx="50%" 
                       cy="50%" 
@@ -500,13 +522,14 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
                       paddingAngle={2} 
                       dataKey="value"
                       nameKey="name"
-                      label={({ name, value }) => `${name}`}
+                      label={({ name }) => `${name}`}
                     >
-                      {effectiveBankAccounts.slice(0, 4).map((_, idx) => (
+                      {[0,1,2,3].map((idx) => (
                         <Cell key={`cell-${idx}`} fill={['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b'][idx]} />
                       ))}
                     </Pie>
                     <Tooltip formatter={(value) => `${value}%`} />
+                    <Legend />
                   </RechartsPie>
                 </ResponsiveContainer>
               </div>
@@ -526,13 +549,23 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
                   ]}>
                     <Pie 
                       cx="50%" 
-                      cy="50%" 
+                      cy="45%" 
                       innerRadius={70} 
-                      outerRadius={120} 
-                      paddingAngle={2} 
+                      outerRadius={110} 
+                      paddingAngle={3} 
                       dataKey="value"
                       nameKey="name"
-                      label={({ name, value }) => `${name} ${value}%`}
+                      label={({ cx, cy, midAngle, innerRadius, outerRadius, value }) => {
+                        const RADIAN = Math.PI / 180;
+                        const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+                        const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                        const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                        return (
+                          <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={13} fontWeight="bold">
+                            {`${value}%`}
+                          </text>
+                        );
+                      }}
                     >
                       <Cell fill="#ef4444" />
                       <Cell fill="#f59e0b" />
@@ -541,6 +574,7 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
                       <Cell fill="#64748b" />
                     </Pie>
                     <Tooltip formatter={(value) => `${value}%`} />
+                    <Legend />
                   </RechartsPie>
                 </ResponsiveContainer>
               </div>
