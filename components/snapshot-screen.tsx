@@ -506,23 +506,31 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
               <p className="text-xs text-slate-400 mb-4">How cash is split across your bank accounts</p>
               <div style={{ width: '100%', height: 250 }}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <RechartsPie data={(() => {
-                    const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b'];
-                    const accounts = effectiveBankAccounts.slice(0, 4);
-                    const total = accounts.reduce((s, a) => s + Number(a.balance || 0), 0);
-                    if (accounts.length === 0 || total === 0) {
-                      return [
-                        { name: 'Operating', value: 60 },
-                        { name: 'Reserve', value: 25 },
-                        { name: 'Tax / GST', value: 15 },
-                      ];
-                    }
-                    return accounts.map((acc, idx) => ({
-                      name: acc.accountName || `Account ${idx + 1}`,
-                      value: Math.max(Math.round(Number(acc.balance || 0) / total * 100), 5),
-                    }));
-                  })()}>
-                    <Pie cx="50%" cy="50%" innerRadius={65} outerRadius={100} paddingAngle={3} dataKey="value" nameKey="name">
+                  <RechartsPie>
+                    <Pie
+                      data={(() => {
+                        const accounts = effectiveBankAccounts.slice(0, 4);
+                        const total = accounts.reduce((s, a) => s + Number(a.balance || 0), 0);
+                        if (accounts.length === 0 || total === 0) {
+                          return [
+                            { name: 'Operating', value: 60 },
+                            { name: 'Reserve', value: 25 },
+                            { name: 'Tax / GST', value: 15 },
+                          ];
+                        }
+                        return accounts.map((acc, idx) => ({
+                          name: acc.accountName || `Account ${idx + 1}`,
+                          value: Math.max(Math.round(Number(acc.balance || 0) / total * 100), 5),
+                        }));
+                      })()}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={65}
+                      outerRadius={100}
+                      paddingAngle={3}
+                      dataKey="value"
+                      nameKey="name"
+                    >
                       <Cell fill="#3b82f6" />
                       <Cell fill="#8b5cf6" />
                       <Cell fill="#ec4899" />
@@ -541,17 +549,25 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
               <p className="text-xs text-slate-400 mb-4">Where your money is going this month</p>
               <div style={{ width: '100%', height: 300 }}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <RechartsPie data={[
-                    { name: 'Salaries', value: 45 },
-                    { name: 'Operations', value: 25 },
-                    { name: 'Infrastructure', value: 15 },
-                    { name: 'Marketing', value: 10 },
-                    { name: 'Other', value: 5 },
-                  ]}>
-                    <Pie cx="50%" cy="50%" innerRadius={70} outerRadius={110} paddingAngle={3} dataKey="value" nameKey="name"
+                  <RechartsPie>
+                    <Pie
+                      data={[
+                        { name: 'Salaries', value: 45 },
+                        { name: 'Operations', value: 25 },
+                        { name: 'Infrastructure', value: 15 },
+                        { name: 'Marketing', value: 10 },
+                        { name: 'Other', value: 5 },
+                      ]}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={70}
+                      outerRadius={110}
+                      paddingAngle={3}
+                      dataKey="value"
+                      nameKey="name"
                       label={({ cx, cy, midAngle, innerRadius, outerRadius, value }) => {
                         const RADIAN = Math.PI / 180;
-                        const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+                        const radius = (innerRadius as number) + ((outerRadius as number) - (innerRadius as number)) * 0.5;
                         const x = (cx as number) + radius * Math.cos(-midAngle * RADIAN);
                         const y = (cy as number) + radius * Math.sin(-midAngle * RADIAN);
                         return (
@@ -560,6 +576,7 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
                           </text>
                         );
                       }}
+                      labelLine={false}
                     >
                       <Cell fill="#ef4444" />
                       <Cell fill="#f59e0b" />
