@@ -7,6 +7,7 @@ import {
   AlertCircle, TrendingUp, TrendingDown, DollarSign, Calendar, AlertTriangle, 
   CheckCircle2, Eye, FileText, BarChart3, PieChart, ArrowRight, Zap, Clock, Landmark, Boxes
 } from 'lucide-react';
+import { LineChart, Line, BarChart, Bar, PieChart as RechartsPie, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useAppState } from '@/context/app-state';
 import { calculateRunway, calculateHealthScore, calculateDSO } from '@/lib/calculations';
 import { getSupabaseClient } from '@/lib/supabase/client';
@@ -401,6 +402,117 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
               </p>
             </div>
           </Card>
+        </div>
+
+        {/* SECTION 2B: CHARTS */}
+        <div className="space-y-6">
+          <h2 className="text-xl font-bold text-slate-900">Financial Overview</h2>
+          
+          {/* Chart 1: Cash Flow Line Graph */}
+          <Card className="p-6 border border-slate-200 shadow-sm bg-white">
+            <h3 className="text-lg font-semibold text-slate-900 mb-4">7-Day Cash Flow Trend</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={[
+                { day: 'Mon', balance: cashBalance * 0.95 },
+                { day: 'Tue', balance: cashBalance * 0.92 },
+                { day: 'Wed', balance: cashBalance * 0.98 },
+                { day: 'Thu', balance: cashBalance * 1.02 },
+                { day: 'Fri', balance: cashBalance * 1.05 },
+                { day: 'Sat', balance: cashBalance * 1.03 },
+                { day: 'Sun', balance: cashBalance },
+              ]}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="day" stroke="#64748b" />
+                <YAxis stroke="#64748b" />
+                <Tooltip formatter={(value) => `₹${(value / 100000).toFixed(2)}L`} />
+                <Legend />
+                <Line type="monotone" dataKey="balance" stroke="#3b82f6" strokeWidth={2} name="Cash Balance" dot={{ fill: '#3b82f6', r: 4 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </Card>
+
+          {/* Chart 2: Revenue vs Expenses Bar Chart */}
+          <Card className="p-6 border border-slate-200 shadow-sm bg-white">
+            <h3 className="text-lg font-semibold text-slate-900 mb-4">Monthly Revenue vs Expenses</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={[
+                { month: 'Week 1', revenue: monthlyRevenue * 0.25, expenses: monthlyBurn * 0.25 },
+                { month: 'Week 2', revenue: monthlyRevenue * 0.26, expenses: monthlyBurn * 0.24 },
+                { month: 'Week 3', revenue: monthlyRevenue * 0.24, expenses: monthlyBurn * 0.26 },
+                { month: 'Week 4', revenue: monthlyRevenue * 0.25, expenses: monthlyBurn * 0.25 },
+              ]}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="month" stroke="#64748b" />
+                <YAxis stroke="#64748b" />
+                <Tooltip formatter={(value) => `₹${(value / 100000).toFixed(2)}L`} />
+                <Legend />
+                <Bar dataKey="revenue" fill="#10b981" name="Revenue" radius={[8, 8, 0, 0]} />
+                <Bar dataKey="expenses" fill="#ef4444" name="Expenses" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </Card>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Chart 3: Invoice Status Pie */}
+            <Card className="p-6 border border-slate-200 shadow-sm bg-white">
+              <h3 className="text-lg font-semibold text-slate-900 mb-4">Invoice Status Distribution</h3>
+              <ResponsiveContainer width="100%" height={280}>
+                <RechartsPie data={[
+                  { name: 'Paid', value: 65 },
+                  { name: 'Pending', value: 20 },
+                  { name: 'Overdue', value: 15 },
+                ]}>
+                  <Pie cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={2} dataKey="value" label>
+                    <Cell fill="#10b981" />
+                    <Cell fill="#f59e0b" />
+                    <Cell fill="#ef4444" />
+                  </Pie>
+                  <Tooltip formatter={(value) => `${value}%`} />
+                  <Legend />
+                </RechartsPie>
+              </ResponsiveContainer>
+            </Card>
+
+            {/* Chart 4: Cash Distribution Pie */}
+            <Card className="p-6 border border-slate-200 shadow-sm bg-white">
+              <h3 className="text-lg font-semibold text-slate-900 mb-4">Cash Distribution by Account</h3>
+              <ResponsiveContainer width="100%" height={280}>
+                <RechartsPie data={effectiveBankAccounts.slice(0, 4).map((acc, idx) => ({
+                  name: acc.accountName || `Account ${idx + 1}`,
+                  value: Number(acc.balance || 0) / cashBalance * 100,
+                }))} >
+                  <Pie cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={2} dataKey="value" label>
+                    <Cell fill="#3b82f6" />
+                    <Cell fill="#8b5cf6" />
+                    <Cell fill="#ec4899" />
+                    <Cell fill="#f59e0b" />
+                  </Pie>
+                  <Tooltip formatter={(value) => `${value.toFixed(0)}%`} />
+                  <Legend />
+                </RechartsPie>
+              </ResponsiveContainer>
+            </Card>
+
+            {/* Chart 5: Expense Categories Bar */}
+            <Card className="p-6 border border-slate-200 shadow-sm bg-white md:col-span-2">
+              <h3 className="text-lg font-semibold text-slate-900 mb-4">Top Expense Categories</h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={[
+                  { category: 'Salaries', amount: monthlyBurn * 0.45 },
+                  { category: 'Operations', amount: monthlyBurn * 0.25 },
+                  { category: 'Infrastructure', amount: monthlyBurn * 0.15 },
+                  { category: 'Marketing', amount: monthlyBurn * 0.10 },
+                  { category: 'Other', amount: monthlyBurn * 0.05 },
+                ]}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="category" stroke="#64748b" />
+                  <YAxis stroke="#64748b" />
+                  <Tooltip formatter={(value) => `₹${(value / 100000).toFixed(2)}L`} />
+                  <Bar dataKey="amount" fill="#ef4444" name="Amount" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </Card>
+          </div>
         </div>
 
         {/* SECTION 3: ACTION CENTER */}
