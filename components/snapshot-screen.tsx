@@ -453,23 +453,29 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
           </Card>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Chart 3: Invoice Status Pie */}
+            {/* Chart 3: Invoice Status - Horizontal Bar */}
             <Card className="p-6 border border-slate-200 shadow-sm bg-white">
-              <h3 className="text-lg font-semibold text-slate-900 mb-4">Invoice Status Distribution</h3>
-              <ResponsiveContainer width="100%" height={280}>
-                <RechartsPie data={[
-                  { name: 'Paid', value: 65 },
-                  { name: 'Pending', value: 20 },
-                  { name: 'Overdue', value: 15 },
+              <h3 className="text-lg font-semibold text-slate-900 mb-4">Invoice Status Breakdown</h3>
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart layout="vertical" data={[
+                  { status: 'Paid', count: 45, fill: '#10b981' },
+                  { status: 'Pending', count: 12, fill: '#f59e0b' },
+                  { status: 'Overdue', count: overdueInvoices, fill: '#ef4444' },
                 ]}>
-                  <Pie cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={2} dataKey="value" label>
-                    <Cell fill="#10b981" />
-                    <Cell fill="#f59e0b" />
-                    <Cell fill="#ef4444" />
-                  </Pie>
-                  <Tooltip formatter={(value) => `${value}%`} />
-                  <Legend />
-                </RechartsPie>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis type="number" stroke="#64748b" />
+                  <YAxis dataKey="status" type="category" stroke="#64748b" width={70} />
+                  <Tooltip formatter={(value) => `${value} invoices`} />
+                  <Bar dataKey="count" fill="#3b82f6" radius={[0, 8, 8, 0]}>
+                    {[
+                      { status: 'Paid', count: 45, fill: '#10b981' },
+                      { status: 'Pending', count: 12, fill: '#f59e0b' },
+                      { status: 'Overdue', count: overdueInvoices, fill: '#ef4444' },
+                    ].map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.fill} />
+                    ))}
+                  </Bar>
+                </BarChart>
               </ResponsiveContainer>
             </Card>
 
@@ -493,23 +499,35 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
               </ResponsiveContainer>
             </Card>
 
-            {/* Chart 5: Expense Categories Bar */}
+            {/* Chart 5: Expense Categories Donut */}
             <Card className="p-6 border border-slate-200 shadow-sm bg-white md:col-span-2">
-              <h3 className="text-lg font-semibold text-slate-900 mb-4">Top Expense Categories</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={[
-                  { category: 'Salaries', amount: monthlyBurn * 0.45 },
-                  { category: 'Operations', amount: monthlyBurn * 0.25 },
-                  { category: 'Infrastructure', amount: monthlyBurn * 0.15 },
-                  { category: 'Marketing', amount: monthlyBurn * 0.10 },
-                  { category: 'Other', amount: monthlyBurn * 0.05 },
+              <h3 className="text-lg font-semibold text-slate-900 mb-4">Expense Categories Breakdown</h3>
+              <ResponsiveContainer width="100%" height={320}>
+                <RechartsPie data={[
+                  { name: 'Salaries', value: 45, fill: '#ef4444' },
+                  { name: 'Operations', value: 25, fill: '#f59e0b' },
+                  { name: 'Infrastructure', value: 15, fill: '#3b82f6' },
+                  { name: 'Marketing', value: 10, fill: '#8b5cf6' },
+                  { name: 'Other', value: 5, fill: '#64748b' },
                 ]}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="category" stroke="#64748b" />
-                  <YAxis stroke="#64748b" />
-                  <Tooltip formatter={(value) => `₹${(value / 100000).toFixed(2)}L`} />
-                  <Bar dataKey="amount" fill="#ef4444" name="Amount" radius={[8, 8, 0, 0]} />
-                </BarChart>
+                  <Pie 
+                    cx="50%" 
+                    cy="50%" 
+                    innerRadius={70} 
+                    outerRadius={120} 
+                    paddingAngle={2} 
+                    dataKey="value" 
+                    label={({ name, value }) => `${name} ${value}%`}
+                  >
+                    <Cell fill="#ef4444" />
+                    <Cell fill="#f59e0b" />
+                    <Cell fill="#3b82f6" />
+                    <Cell fill="#8b5cf6" />
+                    <Cell fill="#64748b" />
+                  </Pie>
+                  <Tooltip formatter={(value) => `${value}%`} />
+                  <Legend />
+                </RechartsPie>
               </ResponsiveContainer>
             </Card>
           </div>
