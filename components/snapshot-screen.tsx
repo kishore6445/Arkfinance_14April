@@ -301,11 +301,14 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
         {/* SECTION 2: CORE CEO METRICS */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Card 1: Cash Position */}
-          <Card className="p-8 border border-slate-200 shadow-sm hover:shadow-md transition-shadow bg-white">
+          <Card className="p-8 border border-slate-200 shadow-sm hover:shadow-md transition-shadow bg-white border-l-4 border-l-green-500">
             <div className="flex items-start justify-between mb-6">
               <div>
                 <p className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">Cash Position</p>
                 <p className="text-4xl font-bold text-slate-900">₹{(cashBalance / 100000).toFixed(2)}L</p>
+                <div className="w-full bg-slate-200 rounded-full h-2 mt-3">
+                  <div className="bg-green-500 h-2 rounded-full" style={{ width: '85%' }} />
+                </div>
               </div>
               <div className="p-3 bg-green-50 rounded-lg">
                 <DollarSign className="w-6 h-6 text-green-600" />
@@ -329,11 +332,14 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
           </Card>
 
           {/* Card 2: Net Cash Flow Today */}
-          <Card className="p-8 border border-slate-200 shadow-sm hover:shadow-md transition-shadow bg-white">
+          <Card className={`p-8 border shadow-sm hover:shadow-md transition-shadow bg-white border-l-4 ${todayNet >= 0 ? 'border-l-green-500 border-slate-200' : 'border-l-red-500 border-slate-200'}`}>
             <div className="flex items-start justify-between mb-6">
               <div>
                 <p className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">Today's Cash Flow</p>
                 <p className="text-4xl font-bold text-slate-900">₹{todayNet.toLocaleString('en-IN')}</p>
+                <div className="w-full bg-slate-200 rounded-full h-2 mt-3">
+                  <div className={`h-2 rounded-full ${todayNet >= 0 ? 'bg-green-500' : 'bg-red-500'}`} style={{ width: '70%' }} />
+                </div>
               </div>
               <div className={`p-3 rounded-lg ${todayNet >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
                 {todayNet >= 0 ? (
@@ -356,20 +362,31 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
           </Card>
 
           {/* Card 3: Business Health */}
-          <Card className="p-8 border border-slate-200 shadow-sm hover:shadow-md transition-shadow bg-white">
+          <Card className={`p-8 border shadow-sm hover:shadow-md transition-shadow bg-white border-l-4 ${
+            healthScore >= 80 ? 'border-l-green-500' : 
+            healthScore >= 60 ? 'border-l-yellow-500' : 
+            'border-l-red-500'
+          } border-slate-200`}>
             <div className="flex items-start justify-between mb-6">
               <div>
                 <p className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">Business Health</p>
                 <p className="text-4xl font-bold text-slate-900">{healthScore}/100</p>
+                <div className="w-full bg-slate-200 rounded-full h-2 mt-3">
+                  <div className={`h-2 rounded-full ${
+                    healthScore >= 80 ? 'bg-green-500' : 
+                    healthScore >= 60 ? 'bg-yellow-500' : 
+                    'bg-red-500'
+                  }`} style={{ width: `${healthScore}%` }} />
+                </div>
               </div>
               <div className={`p-3 rounded-lg ${
                 healthScore >= 80 ? 'bg-green-50' : 
-                healthScore >= 60 ? 'bg-orange-50' : 
+                healthScore >= 60 ? 'bg-yellow-50' : 
                 'bg-red-50'
               }`}>
                 <CheckCircle2 className={`w-6 h-6 ${
                   healthScore >= 80 ? 'text-green-600' : 
-                  healthScore >= 60 ? 'text-orange-600' : 
+                  healthScore >= 60 ? 'text-yellow-600' : 
                   'text-red-600'
                 }`} />
               </div>
@@ -377,7 +394,7 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
             <div className="border-t border-slate-200 pt-4">
               <p className={`text-sm font-semibold px-3 py-1 rounded inline-block ${
                 healthScore >= 80 ? 'bg-green-50 text-green-700' : 
-                healthScore >= 60 ? 'bg-orange-50 text-orange-700' : 
+                healthScore >= 60 ? 'bg-yellow-50 text-yellow-700' : 
                 'bg-red-50 text-red-700'
               }`}>
                 {getHealthStatus(healthScore)}
