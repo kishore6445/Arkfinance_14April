@@ -411,45 +411,49 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
           {/* Chart 1: Cash Flow Line Graph */}
           <Card className="p-6 border border-slate-200 shadow-sm bg-white">
             <h3 className="text-lg font-semibold text-slate-900 mb-4">7-Day Cash Flow Trend</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={[
-                { day: 'Mon', balance: cashBalance * 0.95 },
-                { day: 'Tue', balance: cashBalance * 0.92 },
-                { day: 'Wed', balance: cashBalance * 0.98 },
-                { day: 'Thu', balance: cashBalance * 1.02 },
-                { day: 'Fri', balance: cashBalance * 1.05 },
-                { day: 'Sat', balance: cashBalance * 1.03 },
-                { day: 'Sun', balance: cashBalance },
-              ]}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="day" stroke="#64748b" />
-                <YAxis stroke="#64748b" />
-                <Tooltip formatter={(value) => `₹${(value / 100000).toFixed(2)}L`} />
-                <Legend />
-                <Line type="monotone" dataKey="balance" stroke="#3b82f6" strokeWidth={2} name="Cash Balance" dot={{ fill: '#3b82f6', r: 4 }} />
-              </LineChart>
-            </ResponsiveContainer>
+            <div style={{ width: '100%', height: 300 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={[
+                  { day: 'Mon', balance: cashBalance * 0.95 },
+                  { day: 'Tue', balance: cashBalance * 0.92 },
+                  { day: 'Wed', balance: cashBalance * 0.98 },
+                  { day: 'Thu', balance: cashBalance * 1.02 },
+                  { day: 'Fri', balance: cashBalance * 1.05 },
+                  { day: 'Sat', balance: cashBalance * 1.03 },
+                  { day: 'Sun', balance: cashBalance },
+                ]}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="day" stroke="#64748b" />
+                  <YAxis stroke="#64748b" />
+                  <Tooltip formatter={(value) => `₹${(value / 100000).toFixed(2)}L`} />
+                  <Legend />
+                  <Line type="monotone" dataKey="balance" stroke="#3b82f6" strokeWidth={2} name="Cash Balance" dot={{ fill: '#3b82f6', r: 4 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </Card>
 
           {/* Chart 2: Revenue vs Expenses Bar Chart */}
           <Card className="p-6 border border-slate-200 shadow-sm bg-white">
             <h3 className="text-lg font-semibold text-slate-900 mb-4">Monthly Revenue vs Expenses</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={[
-                { month: 'Week 1', revenue: monthlyRevenue * 0.25, expenses: monthlyBurn * 0.25 },
-                { month: 'Week 2', revenue: monthlyRevenue * 0.26, expenses: monthlyBurn * 0.24 },
-                { month: 'Week 3', revenue: monthlyRevenue * 0.24, expenses: monthlyBurn * 0.26 },
-                { month: 'Week 4', revenue: monthlyRevenue * 0.25, expenses: monthlyBurn * 0.25 },
-              ]}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="month" stroke="#64748b" />
-                <YAxis stroke="#64748b" />
-                <Tooltip formatter={(value) => `₹${(value / 100000).toFixed(2)}L`} />
-                <Legend />
-                <Bar dataKey="revenue" fill="#10b981" name="Revenue" radius={[8, 8, 0, 0]} />
-                <Bar dataKey="expenses" fill="#ef4444" name="Expenses" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <div style={{ width: '100%', height: 300 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={[
+                  { month: 'Week 1', revenue: monthlyRevenue * 0.25, expenses: monthlyBurn * 0.25 },
+                  { month: 'Week 2', revenue: monthlyRevenue * 0.26, expenses: monthlyBurn * 0.24 },
+                  { month: 'Week 3', revenue: monthlyRevenue * 0.24, expenses: monthlyBurn * 0.26 },
+                  { month: 'Week 4', revenue: monthlyRevenue * 0.25, expenses: monthlyBurn * 0.25 },
+                ]}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="month" stroke="#64748b" />
+                  <YAxis stroke="#64748b" />
+                  <Tooltip formatter={(value) => `₹${(value / 100000).toFixed(2)}L`} />
+                  <Legend />
+                  <Bar dataKey="revenue" fill="#10b981" name="Revenue" radius={[8, 8, 0, 0]} />
+                  <Bar dataKey="expenses" fill="#ef4444" name="Expenses" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </Card>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -482,53 +486,63 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
             {/* Chart 4: Cash Distribution Pie */}
             <Card className="p-6 border border-slate-200 shadow-sm bg-white">
               <h3 className="text-lg font-semibold text-slate-900 mb-4">Cash Distribution by Account</h3>
-              <ResponsiveContainer width="100%" height={280}>
-                <RechartsPie data={effectiveBankAccounts.slice(0, 4).map((acc, idx) => ({
-                  name: acc.accountName || `Account ${idx + 1}`,
-                  value: Number(acc.balance || 0) / cashBalance * 100,
-                }))} >
-                  <Pie cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={2} dataKey="value" label>
-                    <Cell fill="#3b82f6" />
-                    <Cell fill="#8b5cf6" />
-                    <Cell fill="#ec4899" />
-                    <Cell fill="#f59e0b" />
-                  </Pie>
-                  <Tooltip formatter={(value) => `${value.toFixed(0)}%`} />
-                  <Legend />
-                </RechartsPie>
-              </ResponsiveContainer>
+              <div style={{ width: '100%', height: 280 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <RechartsPie data={effectiveBankAccounts.slice(0, 4).map((acc, idx) => ({
+                    name: acc.accountName || `Account ${idx + 1}`,
+                    value: Math.round(Number(acc.balance || 0) / cashBalance * 100),
+                  }))} >
+                    <Pie 
+                      cx="50%" 
+                      cy="50%" 
+                      innerRadius={60} 
+                      outerRadius={100} 
+                      paddingAngle={2} 
+                      dataKey="value"
+                      label={({ name, value }) => `${name} ${value}%`}
+                    >
+                      <Cell fill="#3b82f6" />
+                      <Cell fill="#8b5cf6" />
+                      <Cell fill="#ec4899" />
+                      <Cell fill="#f59e0b" />
+                    </Pie>
+                    <Tooltip formatter={(value) => `${value}%`} />
+                  </RechartsPie>
+                </ResponsiveContainer>
+              </div>
             </Card>
 
             {/* Chart 5: Expense Categories Donut */}
             <Card className="p-6 border border-slate-200 shadow-sm bg-white md:col-span-2">
               <h3 className="text-lg font-semibold text-slate-900 mb-4">Expense Categories Breakdown</h3>
-              <ResponsiveContainer width="100%" height={320}>
-                <RechartsPie data={[
-                  { name: 'Salaries', value: 45, fill: '#ef4444' },
-                  { name: 'Operations', value: 25, fill: '#f59e0b' },
-                  { name: 'Infrastructure', value: 15, fill: '#3b82f6' },
-                  { name: 'Marketing', value: 10, fill: '#8b5cf6' },
-                  { name: 'Other', value: 5, fill: '#64748b' },
-                ]}>
-                  <Pie 
-                    cx="50%" 
-                    cy="50%" 
-                    innerRadius={70} 
-                    outerRadius={120} 
-                    paddingAngle={2} 
-                    dataKey="value" 
-                    label={({ name, value }) => `${name} ${value}%`}
-                  >
-                    <Cell fill="#ef4444" />
-                    <Cell fill="#f59e0b" />
-                    <Cell fill="#3b82f6" />
-                    <Cell fill="#8b5cf6" />
-                    <Cell fill="#64748b" />
-                  </Pie>
-                  <Tooltip formatter={(value) => `${value}%`} />
-                  <Legend />
-                </RechartsPie>
-              </ResponsiveContainer>
+              <div style={{ width: '100%', height: 320 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <RechartsPie data={[
+                    { name: 'Salaries', value: 45, fill: '#ef4444' },
+                    { name: 'Operations', value: 25, fill: '#f59e0b' },
+                    { name: 'Infrastructure', value: 15, fill: '#3b82f6' },
+                    { name: 'Marketing', value: 10, fill: '#8b5cf6' },
+                    { name: 'Other', value: 5, fill: '#64748b' },
+                  ]}>
+                    <Pie 
+                      cx="50%" 
+                      cy="50%" 
+                      innerRadius={70} 
+                      outerRadius={120} 
+                      paddingAngle={2} 
+                      dataKey="value" 
+                      label={({ name, value }) => `${name} ${value}%`}
+                    >
+                      <Cell fill="#ef4444" />
+                      <Cell fill="#f59e0b" />
+                      <Cell fill="#3b82f6" />
+                      <Cell fill="#8b5cf6" />
+                      <Cell fill="#64748b" />
+                    </Pie>
+                    <Tooltip formatter={(value) => `${value}%`} />
+                  </RechartsPie>
+                </ResponsiveContainer>
+              </div>
             </Card>
           </div>
         </div>
