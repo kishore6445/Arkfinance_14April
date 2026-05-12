@@ -479,17 +479,17 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
 
           {/* ── Business Health — Quarter size (25%) ── */}
           <Card className={`lg:col-span-1 p-6 border rounded-2xl shadow-sm ${healthBg} flex flex-col`}>
-            <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-4">Business Health</p>
+            <p className="text-sm font-semibold uppercase tracking-widest text-slate-500 mb-4">Business Health</p>
 
-            {/* Semi-circle gauge — smaller */}
+            {/* Semi-circle gauge — larger */}
             <div className="flex flex-col items-center">
-              <svg viewBox="0 0 220 120" className="w-40 overflow-visible" aria-hidden="true">
+              <svg viewBox="0 0 220 120" className="w-48 overflow-visible" aria-hidden="true">
                 <path d={gaugeArc(100, 90, 110, 110)} fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="18" strokeLinecap="round" />
                 <path d={gaugeArc(healthScore, 90, 110, 110)} fill="none" stroke={healthColor} strokeWidth="18" strokeLinecap="round" />
-                <text x="110" y="100" textAnchor="middle" fontSize="32" fontWeight="800" fill={healthColor}>{healthScore}</text>
-                <text x="110" y="118" textAnchor="middle" fontSize="12" fill="#94a3b8">of 100</text>
+                <text x="110" y="100" textAnchor="middle" fontSize="40" fontWeight="800" fill={healthColor}>{healthScore}</text>
+                <text x="110" y="118" textAnchor="middle" fontSize="14" fill="#94a3b8">of 100</text>
               </svg>
-              <span className={`inline-block text-sm font-bold px-3 py-1 rounded-full mt-2 ${healthText} bg-white/80`}>
+              <span className={`inline-block text-base font-bold px-4 py-2 rounded-full mt-3 ${healthText} bg-white/80`}>
                 {getHealthStatus(healthScore)}
               </span>
             </div>
@@ -498,17 +498,17 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
           {/* ── CASH IN BANK — Dominant Center (50%) ── */}
           <Card className="lg:col-span-2 px-8 py-8 border border-green-200 rounded-2xl shadow-sm bg-gradient-to-br from-green-50 to-white hover:shadow-lg transition-shadow">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Cash in Bank</p>
+              <p className="text-sm font-semibold uppercase tracking-widest text-slate-500">Cash in Bank</p>
               <div className="p-3 bg-green-100 rounded-xl">
                 <DollarSign className="w-6 h-6 text-green-600" />
               </div>
             </div>
-            <p className="text-5xl font-extrabold text-slate-900 mt-2 font-mono">
+            <p className="text-6xl font-extrabold text-slate-900 mt-3 font-mono">
               ₹{(cashBalance / 100000).toFixed(2)}L
             </p>
-            <p className="text-sm text-slate-600 mt-2">Total Available Balance</p>
+            <p className="text-lg text-slate-600 mt-2">Total Available Balance</p>
             <div className="mt-4 pt-4 border-t border-green-100 space-y-2">
-              <div className="flex justify-between text-xs">
+              <div className="flex justify-between text-sm">
                 <span className="text-slate-600">Across {effectiveBankAccounts.length} accounts</span>
                 <span className={`font-semibold ${cashBalance > monthlyBurn * 3 ? 'text-green-600' : cashBalance > monthlyBurn ? 'text-amber-600' : 'text-red-600'}`}>
                   {cashBalance > monthlyBurn * 3 ? '✓ Healthy' : cashBalance > monthlyBurn ? '⚠ Watch' : '🔴 Critical'}
@@ -523,28 +523,27 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
           {/* ── Right Column: Runway + Receivables (25%) ── */}
           <div className="lg:col-span-1 space-y-4">
             
-            {/* Runway Card */}
-            <Card className={`px-6 py-5 border rounded-2xl shadow-sm hover:shadow-md transition-shadow ${runwayBg}`}>
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Runway</p>
-                <TrendingUp className={`w-4 h-4 ${runwayColor}`} />
+            <Card className={`px-7 py-6 border rounded-2xl shadow-sm hover:shadow-md transition-shadow ${runwayBg}`}>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-semibold uppercase tracking-widest text-slate-500">Runway</p>
+                <TrendingUp className={`w-5 h-5 ${runwayColor}`} />
               </div>
-              <p className={`text-3xl font-extrabold mt-1 ${runwayColor}`}>
-                {runway.toFixed(1)} <span className="text-sm font-semibold">mo</span>
+              <p className={`text-4xl font-extrabold mt-2 ${runwayColor}`}>
+                {runway.toFixed(1)} <span className="text-lg font-semibold">mo</span>
               </p>
-              <p className="text-xs text-slate-600 mt-1">Until {new Date(todayDate).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}</p>
+              <p className="text-sm text-slate-600 mt-2">Until {new Date(todayDate).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}</p>
             </Card>
 
             {/* Pending Receivables Card */}
-            <Card className="px-6 py-5 border border-slate-200 rounded-2xl shadow-sm bg-white hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Receivables</p>
-                <FileText className="w-4 h-4 text-blue-600" />
+            <Card className="px-7 py-6 border border-slate-200 rounded-2xl shadow-sm bg-white hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-semibold uppercase tracking-widest text-slate-500">Receivables</p>
+                <FileText className="w-5 h-5 text-blue-600" />
               </div>
-              <p className="text-3xl font-extrabold text-slate-900 mt-1">
+              <p className="text-4xl font-extrabold text-slate-900 mt-2">
                 ₹{(pendingReceivables / 100000).toFixed(2)}L
               </p>
-              <p className="text-xs text-slate-500 mt-1">{state.invoices.filter(inv => inv.type === 'Revenue' && (inv.status === 'Pending' || inv.status === 'Sent')).length} invoices</p>
+              <p className="text-sm text-slate-500 mt-2">{state.invoices.filter(inv => inv.type === 'Revenue' && (inv.status === 'Pending' || inv.status === 'Sent')).length} invoices</p>
             </Card>
           </div>
         </div>
@@ -716,16 +715,16 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
         ══════════════════════════════════════════════════════════════════ */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-          {/* Invoice Status — pie chart */}
-          <Card className="p-6 border border-slate-200 rounded-2xl shadow-sm bg-white">
-            <div className="flex items-start justify-between mb-4">
+          {/* Invoice Status — pie chart - LARGER for accessibility */}
+          <Card className="p-8 border border-slate-200 rounded-2xl shadow-sm bg-white">
+            <div className="flex items-start justify-between mb-6">
               <div>
-                <h2 className="text-base font-bold text-slate-900">Invoice Status</h2>
-                <p className="text-xs text-slate-400 mt-0.5">This Month</p>
+                <h2 className="text-2xl font-bold text-slate-900">Invoice Status</h2>
+                <p className="text-sm text-slate-400 mt-1">This Month</p>
               </div>
             </div>
-            <div className="flex flex-col items-center gap-4">
-              <div style={{ width: 200, height: 200 }}>
+            <div className="flex flex-col items-center gap-6">
+              <div style={{ width: '100%', height: 350 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <RechartsPie>
                     <Pie
@@ -735,8 +734,8 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
                         { name: 'Overdue', value: invoiceOverdue, fill: '#DC2626' },
                       ]}
                       cx="50%" cy="50%"
-                      innerRadius={50} outerRadius={80}
-                      paddingAngle={2} dataKey="value" nameKey="name"
+                      innerRadius={70} outerRadius={110}
+                      paddingAngle={3} dataKey="value" nameKey="name"
                       labelLine={false}
                       label={({ value }) => {
                         const total = invoicePaid + invoicePending + invoiceOverdue;
@@ -748,50 +747,50 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
                       <Cell fill="#2563EB" />
                       <Cell fill="#DC2626" />
                     </Pie>
-                    <Tooltip formatter={(value) => `${value} invoices`} />
+                    <Tooltip formatter={(value) => `${value} invoices`} contentStyle={{ fontSize: 16, fontWeight: 'bold' }} />
                   </RechartsPie>
                 </ResponsiveContainer>
               </div>
               
               <div className="space-y-2 text-center">
-                <p className="text-sm font-bold text-slate-900">₹{((invoicePaid + invoicePending + invoiceOverdue) * 250000 / 100000).toFixed(0)}L</p>
-                <p className="text-xs text-slate-500">Total Invoice Value</p>
+                <p className="text-4xl font-extrabold text-slate-900">₹{((invoicePaid + invoicePending + invoiceOverdue) * 250000 / 100000).toFixed(0)}L</p>
+                <p className="text-lg text-slate-500">Total Invoice Value</p>
                 {invoiceOverdue > 0 && (
-                  <p className="text-xs text-red-600 font-semibold">
+                  <p className="text-base text-red-600 font-semibold">
                     {invoiceOverdue} invoice{invoiceOverdue !== 1 ? 's' : ''} overdue worth ₹{(invoiceOverdue * 320000 / 100000).toFixed(0)}L
                   </p>
                 )}
               </div>
             </div>
 
-            <div className="mt-5 grid grid-cols-3 gap-3 text-center">
+            <div className="mt-8 grid grid-cols-3 gap-4 text-center">
               {[
                 { label: 'Paid',    count: invoicePaid,    color: 'bg-green-500' },
                 { label: 'Pending', count: invoicePending, color: 'bg-blue-500' },
                 { label: 'Overdue', count: invoiceOverdue, color: 'bg-red-500'   },
               ].map(item => (
                 <div key={item.label}>
-                  <div className={`w-10 h-10 ${item.color} rounded-full flex items-center justify-center mx-auto mb-2`}>
-                    <span className="text-white font-bold text-sm">{item.count}</span>
+                  <div className={`w-16 h-16 ${item.color} rounded-full flex items-center justify-center mx-auto mb-3`}>
+                    <span className="text-white font-bold text-2xl">{item.count}</span>
                   </div>
-                  <p className="text-xs text-slate-600">{item.label}</p>
+                  <p className="text-lg text-slate-600 font-semibold">{item.label}</p>
                 </div>
               ))}
             </div>
           </Card>
 
-          {/* Expense Breakdown — donut + insight */}
-          <Card className="p-6 border border-slate-200 rounded-2xl shadow-sm bg-white">
-            <h2 className="text-base font-bold text-slate-900 mb-1">Expense Breakdown</h2>
-            <p className="text-xs text-slate-400 mb-4">Where your money is going</p>
-            <div style={{ width: '100%', height: 200 }}>
+          {/* Expense Breakdown — donut + insight - LARGER for accessibility */}
+          <Card className="p-8 border border-slate-200 rounded-2xl shadow-sm bg-white">
+            <h2 className="text-2xl font-bold text-slate-900 mb-2">Expense Breakdown</h2>
+            <p className="text-sm text-slate-400 mb-6">Where your money is going</p>
+            <div style={{ width: '100%', height: 350 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <RechartsPie>
                   <Pie
                     data={expenseCategoryData}
                     cx="50%" cy="50%"
-                    innerRadius={48} outerRadius={78}
-                    paddingAngle={2} dataKey="value" nameKey="name"
+                    innerRadius={70} outerRadius={110}
+                    paddingAngle={3} dataKey="value" nameKey="name"
                     labelLine={false}
                     label={({ cx, cy, midAngle, innerRadius, outerRadius, value }) => {
                       const RADIAN = Math.PI / 180;
@@ -800,7 +799,7 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
                       const y = (cy as number) + radius * Math.sin(-midAngle * RADIAN);
                       if ((value as number) < 10) return null;
                       return (
-                        <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight="700">
+                        <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={16} fontWeight="700">
                           {`${value}%`}
                         </text>
                       );
@@ -810,14 +809,13 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
                       <Cell key={`exp-cell-${idx}`} fill={entry.fill} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value) => `${value}%`} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Tooltip formatter={(value) => `${value}%`} contentStyle={{ fontSize: 16, fontWeight: 'bold' }} />
+                  <Legend wrapperStyle={{ fontSize: 14, fontWeight: 600 }} />
                 </RechartsPie>
               </ResponsiveContainer>
             </div>
-            {/* insight line */}
-            <p className="text-xs text-slate-600 mt-4 bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
-              Salaries contribute <span className="font-bold text-slate-800">45%</span> of total expenses this month
+            <p className="text-base text-slate-600 mt-6 bg-slate-50 rounded-lg px-4 py-3 border-2 border-slate-200">
+              Salaries contribute <span className="font-bold text-slate-900 text-lg">45%</span> of total expenses this month
             </p>
           </Card>
         </div>
@@ -825,36 +823,36 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
         {/* ══════════════════════════════════════════════════════════════════
             SECTION 5 — CASH ALLOCATION: Horizontal stacked bar
         ══════════════════════════════════════════════════════════════════ */}
-        <Card className="p-6 border border-slate-200 rounded-2xl shadow-sm bg-white">
-          <div className="flex items-center justify-between mb-5">
+        <Card className="p-8 border border-slate-200 rounded-2xl shadow-sm bg-white">
+          <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="text-base font-bold text-slate-900">Cash Allocation</h2>
-              <p className="text-xs text-slate-400 mt-0.5">Smart allocation of your money</p>
+              <h2 className="text-2xl font-bold text-slate-900">Cash Allocation</h2>
+              <p className="text-sm text-slate-400 mt-1">Smart allocation of your money</p>
             </div>
-            <Button variant="ghost" className="text-sm text-slate-600 hover:text-slate-900">
+            <Button variant="ghost" className="text-base text-slate-600 hover:text-slate-900 font-semibold">
               Manage Allocation →
             </Button>
           </div>
 
-          {/* Stacked horizontal bar */}
-          <div className="mb-5">
-            <div className="flex rounded-full overflow-hidden h-8 w-full gap-1">
-              <div className="bg-green-500 flex items-center justify-center text-white text-xs font-bold" style={{ width: '54%' }}>
+          {/* Stacked horizontal bar - larger height */}
+          <div className="mb-7">
+            <div className="flex rounded-full overflow-hidden h-12 w-full gap-1">
+              <div className="bg-green-500 flex items-center justify-center text-white text-sm font-bold" style={{ width: '54%' }}>
                 Operating
               </div>
-              <div className="bg-blue-500 flex items-center justify-center text-white text-xs font-bold" style={{ width: '16%' }}>
+              <div className="bg-blue-500 flex items-center justify-center text-white text-sm font-bold" style={{ width: '16%' }}>
                 GST
               </div>
-              <div className="bg-amber-400 flex items-center justify-center text-white text-xs font-bold" style={{ width: '17%' }}>
+              <div className="bg-amber-400 flex items-center justify-center text-white text-sm font-bold" style={{ width: '17%' }}>
                 Salary
               </div>
-              <div className="bg-purple-400 flex items-center justify-center text-white text-xs font-bold" style={{ width: '13%' }}>
+              <div className="bg-purple-400 flex items-center justify-center text-white text-sm font-bold" style={{ width: '13%' }}>
                 Profit
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-4 gap-5">
             {[
               { name: 'Operating Account', amount: '₹6,20,000', pct: 54, color: 'bg-green-500' },
               { name: 'GST Reserve', amount: '₹1,80,000', pct: 16, color: 'bg-blue-500' },
@@ -862,11 +860,11 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
               { name: 'Profit Reserve', amount: '₹1,46,591', pct: 13, color: 'bg-purple-400' },
             ].map(bucket => (
               <div key={bucket.name}>
-                <p className="text-xs font-semibold text-slate-600 mb-2">{bucket.name}</p>
-                <p className="text-lg font-bold text-slate-900">{bucket.amount}</p>
-                <div className="flex items-center gap-2 mt-2">
-                  <div className={`w-2 h-2 rounded-full ${bucket.color}`} />
-                  <p className="text-xs text-slate-500">{bucket.pct}% allocation</p>
+                <p className="text-sm font-semibold text-slate-600 mb-2">{bucket.name}</p>
+                <p className="text-2xl font-bold text-slate-900 mb-2">{bucket.amount}</p>
+                <div className="flex items-center gap-2 mt-3">
+                  <div className={`w-3 h-3 rounded-full ${bucket.color}`} />
+                  <p className="text-sm text-slate-500 font-semibold">{bucket.pct}% allocation</p>
                 </div>
               </div>
             ))}
