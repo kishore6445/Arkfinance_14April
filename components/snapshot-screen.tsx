@@ -609,12 +609,19 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
           <Card className="p-8 border border-slate-200 rounded-2xl shadow-sm bg-white mb-8">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-bold text-slate-900">Revenue, Expenses & Profit Timeline</h3>
-              <div className="flex gap-2">
-                {[{ label: '7D', days: 7 }, { label: '30D', days: 30 }, { label: '90D', days: 90 }].map(period => (
-                  <Button key={period.days} variant="outline" className="text-xs px-3 py-1 border-slate-300">
-                    {period.label}
-                  </Button>
-                ))}
+              <div className="flex items-center gap-3">
+                <select className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="this-month">This Month (1 – 19 May)</option>
+                  <option value="last-month">Last Month (1 – 30 Apr)</option>
+                  <option value="this-quarter">This Quarter (1 Apr – 30 Jun)</option>
+                  <option value="last-quarter">Last Quarter (1 Jan – 31 Mar)</option>
+                  <option value="year-to-date">Year to Date (1 Jan – 19 May)</option>
+                  <option value="last-year">Last 12 Months</option>
+                  <option value="custom">Custom Range</option>
+                </select>
+                <Button variant="outline" className="text-sm px-4 py-2 border-slate-300">
+                  📊 Export
+                </Button>
               </div>
             </div>
 
@@ -910,7 +917,7 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
 
         {/* ══════════════════════════════════════════════════════════════════
             SECTION 5 — CASH ALLOCATION: Horizontal stacked bar
-        ══════════════════════════════════════════════════════════════════ */}
+        ═══════════════════════════════════════════════���══════════════════ */}
         <Card className="p-8 border border-slate-200 rounded-2xl shadow-sm bg-white">
           <div className="flex items-center justify-between mb-6">
             <div>
