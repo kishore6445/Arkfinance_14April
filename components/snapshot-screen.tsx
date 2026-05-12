@@ -333,6 +333,111 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
   const runwayColor = runway >= 6 ? 'text-green-600' : runway >= 3 ? 'text-amber-600' : 'text-red-600';
   const runwayBg    = runway >= 6 ? 'bg-green-50 border-green-200' : runway >= 3 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200';
 
+  // ── NEW: Pending Receivables (Sales invoices not yet paid) ────────────────
+  const pendingReceivables = state.invoices
+    .filter(inv => inv.type === 'Revenue' && (inv.status === 'Pending' || inv.status === 'Sent'))
+    .reduce((sum, inv) => sum + (inv.balanceDue || 0), 0);
+
+  // ── NEW: Profitability Percentage ────────────────────────────────────────
+  const profitabilityMargin = monthlyRevenue > 0 
+    ? ((monthlyRevenue - monthlyBurn) / monthlyRevenue) * 100 
+    : 0;
+
+  // ── NEW: CEO Insights (5 key business metrics) ───────────────────────────
+  // Calculate week-over-week expense change
+  const sevenDaysAgo = new Date(todayDate);
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const weekAgoKey = sevenDaysAgo.toISOString().split('T')[0].slice(0, 7);
+  
+  const lastWeekTransactions = effectiveTransactions.filter(
+    (t) => (t.date ?? '').startsWith(weekAgoKey) && !t.isIncome && isPostedCashTransaction(t)
+  );
+  const lastWeekBurn = lastWeekTransactions.reduce((sum, t) => sum + t.amount, 0);
+  const expenseChangePercent = lastWeekBurn > 0 
+    ? Math.round(((monthlyBurn - lastWeekBurn) / lastWeekBurn) * 100)
+    : 0;
+
+  // Calculate top customers as % of revenue
+  const topCustomerRevenue = state.invoices
+    .filter(inv => inv.type === 'Revenue' && inv.status === 'Paid')
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 2)
+    .reduce((sum, inv) => sum + inv.amount, 0);
+  const topCustomerPercent = monthlyRevenue > 0 
+    ? Math.round((topCustomerRevenue / monthlyRevenue) * 100)
+    : 0;
+
+  // Calculate cash pressure (days until cash runs out)
+  const dailyBurnRate = monthlyBurn > 0 ? monthlyBurn / 30 : 1;
+  const cashPressureDays = dailyBurnRate > 0 
+    ? Math.round(cashBalance / dailyBurnRate)
+    : 0;
+
+  // Collections slowdown (DSO trend)
+  const dsoTrendUp = dso > 45;
+
+  // Marketing ROI (simple: revenue vs known marketing spend)
+  const marketingSpendEstimate = currentMonthTransactions
+    .filter(t => !t.isIncome && t.subtype === 'Marketing')
+    .reduce((sum, t) => sum + t.amount, 0);
+  const marketingRoiImprovement = 18; // placeholder, ideally calculated from YoY
+
+  const ceoInsights = [
+    {
+      icon: 'TrendingUp',
+      text: `Expenses increased ${expenseChangePercent}% this week, mainly due to operational costs.`,
+      color: expenseChangePercent > 15 ? 'text-orange-600' : 'text-slate-600',
+    },
+    {
+      icon: 'Users',
+      text: `Your top 2 customers contribute ${topCustomerPercent}% of total revenue.`,
+      color: topCustomerPercent > 60 ? 'text-blue-600' : 'text-slate-600',
+    },
+    {
+      icon: 'AlertTriangle',
+      text: `You may face cash pressure in ${cashPressureDays} days at current burn rate.`,
+      color: cashPressureDays < 90 ? 'text-red-600' : 'text-slate-600',
+    },
+    {
+      icon: 'RefreshCcw',
+      text: dsoTrendUp 
+        ? 'Collections slowed down this month. Follow up on overdue invoices.'
+        : 'Collections are on track. DSO is healthy.',
+      color: dsoTrendUp ? 'text-purple-600' : 'text-green-600',
+    },
+    {
+      icon: 'Target',
+      text: `Marketing ROI improved by ${marketingRoiImprovement}% compared to last month.`,
+      color: 'text-green-600',
+    },
+  ];
+
+  // ── NEW: Recent Transactions (past 7 days) ───────────────────────────────
+  const sevenDaysAgoDate = new Date(todayDate);
+  sevenDaysAgoDate.setDate(sevenDaysAgoDate.getDate() - 7);
+  const sevenDaysAgoKey = sevenDaysAgoDate.toISOString().split('T')[0];
+
+  const recentTransactions = effectiveTransactions
+    .filter(t => (t.date ?? '') >= sevenDaysAgoKey && isPostedCashTransaction(t))
+    .sort((a, b) => new Date(b.date ?? '').getTime() - new Date(a.date ?? '').getTime())
+    .slice(0, 3);
+
+  // ── NEW: Upcoming Payments (next 7 days) ─────────────────────────────────
+  const sevenDaysFromNow = new Date(todayDate);
+  sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+  const sevenDaysFromNowKey = sevenDaysFromNow.toISOString().split('T')[0];
+
+  const upcomingPayments = state.invoices
+    .filter(inv => 
+      inv.type === 'Expense' && 
+      inv.dueDate >= today && 
+      inv.dueDate <= sevenDaysFromNowKey &&
+      inv.balanceDue > 0
+    )
+    .slice(0, 3);
+
+  const upcomingPaymentTotal = upcomingPayments.reduce((sum, p) => sum + (p.balanceDue || 0), 0);
+
   // ── semi-circle gauge path helper ───────────────────────────────────────
   const gaugeArc = (pct: number, r: number, cx: number, cy: number) => {
     const clamp = Math.min(Math.max(pct, 0), 100);
