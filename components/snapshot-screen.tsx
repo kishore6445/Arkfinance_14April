@@ -692,86 +692,87 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
               </div>
             </div>
           </Card>
+        </div>
 
-          {/* PROFITABILITY INSIGHTS — Remove confusing empty graph */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <Card className="p-6 border border-slate-200 rounded-2xl shadow-sm bg-white">
-              <h3 className="text-lg font-bold text-slate-900 mb-4">Profitability Insights</h3>
-              <div className="space-y-4">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-sm font-semibold text-slate-600">Net Profit Margin</p>
-                    <p className="text-2xl font-bold text-green-600">{profitabilityMargin.toFixed(1)}%</p>
-                  </div>
-                  <p className="text-xs text-slate-600">
-                    Healthy range for your business: <span className="font-semibold">20–30%</span>
-                  </p>
-                  <p className="text-sm text-green-600 font-semibold mt-2">✓ You're performing well</p>
+        {/* ══════════════════════════════════════════════════════════════════
+            SECTION 3 — CRITICAL ACTIONS: What requires immediate decision
+        ══════════════════════════════════════════════════════════════════ */}
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-6">Critical Actions</h2>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            {/* Overdue Invoices - Left Card */}
+            <Card className="p-6 border-l-4 border-l-red-600 border border-slate-200 rounded-2xl shadow-sm bg-white hover:shadow-lg transition-shadow">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-3 bg-red-50 rounded-lg">
+                  <FileText className="w-5 h-5 text-red-600" />
                 </div>
-                <div className="pt-4 border-t border-slate-200">
-                  <p className="text-sm text-slate-700 mb-2">
-                    <span className="font-semibold">Why improving:</span> Revenue grew 18% while expenses only grew 4%. This means better operational efficiency.
-                  </p>
-                </div>
+                <span className="text-2xl font-bold text-red-600">{invoiceOverdue}</span>
               </div>
+              <p className="text-sm font-semibold text-slate-900">Overdue Invoices</p>
+              <p className="text-lg font-bold text-red-600 mt-2">₹{(invoiceOverdue * 320000 / 100000).toFixed(0)}L stuck</p>
+              <p className="text-xs text-slate-600 mt-1">Largest: ABC Industries (₹8.2L)</p>
+              <Button className="w-full mt-4 bg-red-600 hover:bg-red-700 text-white font-semibold py-2 rounded-lg text-sm">
+                Follow Up Now
+              </Button>
             </Card>
 
-            <Card className="p-6 border border-slate-200 rounded-2xl shadow-sm bg-white">
-              <h3 className="text-lg font-bold text-slate-900 mb-4">Forecast & Recommendations</h3>
-              <div className="space-y-4">
-                <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
-                  <p className="text-sm font-semibold text-slate-900 mb-1">Expected Profit (By Month-end)</p>
-                  <p className="text-2xl font-bold text-blue-600">₹3.1L</p>
-                  <p className="text-xs text-slate-600 mt-1">If current growth trend continues</p>
+            {/* Compliance Alerts - Middle Card */}
+            <Card className="p-6 border-l-4 border-l-yellow-600 border border-slate-200 rounded-2xl shadow-sm bg-white hover:shadow-lg transition-shadow">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-3 bg-yellow-50 rounded-lg">
+                  <AlertTriangle className="w-5 h-5 text-yellow-600" />
                 </div>
-                <div className="space-y-2">
-                  <p className="text-sm font-semibold text-slate-900">Recommendations:</p>
-                  <ul className="text-xs text-slate-700 space-y-1">
-                    <li>✓ Continue cost control - you're trending well</li>
-                    <li>✓ Monitor salary budget - currently at 45% (target: 30-35%)</li>
-                    <li>💡 Increase marketing spend to capture growth opportunities</li>
-                  </ul>
-                </div>
+                <span className="text-2xl font-bold text-yellow-600">2</span>
               </div>
+              <p className="text-sm font-semibold text-slate-900">Compliance Alerts</p>
+              <div className="mt-2 space-y-1 text-xs text-slate-600">
+                <p>GST filing due: 5 Jun</p>
+                <p>Tax audit: Scheduled 12 Jun</p>
+              </div>
+              <Button className="w-full mt-4 bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 rounded-lg text-sm">
+                View Calendar
+              </Button>
+            </Card>
+
+            {/* Pending Approvals - Right Card */}
+            <Card className="p-6 border-l-4 border-l-blue-600 border border-slate-200 rounded-2xl shadow-sm bg-white hover:shadow-lg transition-shadow">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-3 bg-blue-50 rounded-lg">
+                  <CheckCircle2 className="w-5 h-5 text-blue-600" />
+                </div>
+                <span className="text-2xl font-bold text-blue-600">3</span>
+              </div>
+              <p className="text-sm font-semibold text-slate-900">Pending Approvals</p>
+              <div className="mt-2 space-y-1 text-xs text-slate-600">
+                <p>Payment requests: ₹45L</p>
+                <p>Budget increase: HR team</p>
+              </div>
+              <Button className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg text-sm">
+                Review Queue
+              </Button>
             </Card>
           </div>
         </div>
 
         {/* ══════════════════════════════════════════════════════════════════
-            SECTION 3 — CEO INSIGHTS: Auto-generated key business metrics
+            SECTION 7 — ONE POWERFUL INSIGHT
         ══════════════════════════════════════════════════════════════════ */}
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Zap className="w-5 h-5 text-blue-600" />
-              <h2 className="text-xl font-bold text-slate-900">CEO Insights</h2>
+        <Card className="p-8 border-2 border-blue-300 rounded-2xl shadow-sm bg-gradient-to-br from-blue-50 to-white">
+          <div className="flex items-start gap-4">
+            <div className="p-3 bg-blue-100 rounded-lg mt-1">
+              <Zap className="w-6 h-6 text-blue-700" />
             </div>
-            <Button variant="ghost" className="text-sm text-slate-600 hover:text-slate-900">
-              View All Insights →
-            </Button>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-blue-700 uppercase tracking-widest mb-1">AI Insight</p>
+              <p className="text-lg font-bold text-slate-900 mb-2">Your salary costs are trending 45% vs target 30-35%. At current burn rate, you have 2.4 months runway.</p>
+              <p className="text-slate-600 text-sm">Recommendation: Optimize headcount or increase revenue. Modeling shows ₹8L salary reduction would extend runway to 3.2 months.</p>
+              <Button variant="link" className="mt-3 text-blue-600 hover:text-blue-700 font-semibold p-0">
+                Run Scenario Analysis →
+              </Button>
+            </div>
           </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
-            {ceoInsights.map((insight, idx) => (
-              <Card key={idx} className="p-5 border border-slate-200 rounded-2xl shadow-sm bg-white hover:shadow-md transition-shadow">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center mb-3 ${
-                  insight.color === 'text-orange-600' ? 'bg-orange-50' :
-                  insight.color === 'text-blue-600' ? 'bg-blue-50' :
-                  insight.color === 'text-red-600' ? 'bg-red-50' :
-                  insight.color === 'text-purple-600' ? 'bg-purple-50' :
-                  'bg-green-50'
-                }`}>
-                  {insight.icon === 'TrendingUp' && <TrendingUp className={`w-4 h-4 ${insight.color}`} />}
-                  {insight.icon === 'Users' && <Users className={`w-4 h-4 ${insight.color}`} />}
-                  {insight.icon === 'AlertTriangle' && <AlertTriangle className={`w-4 h-4 ${insight.color}`} />}
-                  {insight.icon === 'RefreshCcw' && <RefreshCcw className={`w-4 h-4 ${insight.color}`} />}
-                  {insight.icon === 'Target' && <Target className={`w-4 h-4 ${insight.color}`} />}
-                </div>
-                <p className="text-sm text-slate-700 leading-relaxed">{insight.text}</p>
-              </Card>
-            ))}
-          </div>
-        </div>
+        </Card>
 
         {/* ══════════════════════════════════════════════════════════════════
             SECTION 4 — BREAKDOWN: Invoice Status (donut) & others
