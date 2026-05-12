@@ -452,7 +452,7 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
 
   return (
     <div className="w-full h-full overflow-auto bg-[#F8FAFC]">
-      <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
+      <div className="max-w-screen-2xl mx-auto px-8 py-8 space-y-8">
 
         {/* ── HEADER ──────────────────────────────────────────────────────── */}
         <div className="flex items-start justify-between gap-4">
@@ -473,125 +473,78 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
         </div>
 
         {/* ══════════════════════════════════════════════════════════════════
-            SECTION 1 — HERO: Health gauge (50%) + 4 KPI cards 2×2 (50%)
+            SECTION 1 — HERO: 3-col layout (Health 25% | CASH 50% | Runway+Receivables 25%)
         ══════════════════════════════════════════════════════════════════ */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-5 items-start">
 
-          {/* ── Business Health — semi-circle gauge dominant card (50%) ── */}
-          <Card className={`p-8 border rounded-2xl shadow-sm ${healthBg} flex flex-col`}>
-            <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-5">Business Health</p>
+          {/* ── Business Health — Quarter size (25%) ── */}
+          <Card className={`lg:col-span-1 p-6 border rounded-2xl shadow-sm ${healthBg} flex flex-col`}>
+            <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-4">Business Health</p>
 
-            {/* Semi-circle gauge */}
+            {/* Semi-circle gauge — smaller */}
             <div className="flex flex-col items-center">
-              <svg viewBox="0 0 220 120" className="w-56 overflow-visible" aria-hidden="true">
-                {/* background track */}
-                <path
-                  d={gaugeArc(100, 90, 110, 110)}
-                  fill="none"
-                  stroke="rgba(255,255,255,0.5)"
-                  strokeWidth="18"
-                  strokeLinecap="round"
-                />
-                {/* coloured fill */}
-                <path
-                  d={gaugeArc(healthScore, 90, 110, 110)}
-                  fill="none"
-                  stroke={healthColor}
-                  strokeWidth="18"
-                  strokeLinecap="round"
-                />
-                {/* score text */}
-                <text x="110" y="100" textAnchor="middle" fontSize="36" fontWeight="800" fill={healthColor}>
-                  {healthScore}
-                </text>
-                <text x="110" y="118" textAnchor="middle" fontSize="13" fill="#94a3b8">
-                  out of 100
-                </text>
+              <svg viewBox="0 0 220 120" className="w-40 overflow-visible" aria-hidden="true">
+                <path d={gaugeArc(100, 90, 110, 110)} fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="18" strokeLinecap="round" />
+                <path d={gaugeArc(healthScore, 90, 110, 110)} fill="none" stroke={healthColor} strokeWidth="18" strokeLinecap="round" />
+                <text x="110" y="100" textAnchor="middle" fontSize="32" fontWeight="800" fill={healthColor}>{healthScore}</text>
+                <text x="110" y="118" textAnchor="middle" fontSize="12" fill="#94a3b8">of 100</text>
               </svg>
-
-              <span className={`inline-block text-base font-bold px-4 py-1.5 rounded-full mt-2 ${healthText} bg-white/80`}>
+              <span className={`inline-block text-sm font-bold px-3 py-1 rounded-full mt-2 ${healthText} bg-white/80`}>
                 {getHealthStatus(healthScore)}
               </span>
-
-              <p className="text-sm text-slate-600 leading-relaxed mt-3 text-center max-w-xs">
-                {healthInsight}
-              </p>
-
-              <Button variant="ghost" className="text-sm text-slate-600 hover:text-slate-900 mt-4 px-0">
-                View Health Details →
-              </Button>
             </div>
           </Card>
 
-          {/* ── 4 KPI cards in 2×2 grid (50%) ── */}
-          <div className="grid grid-cols-2 gap-4">
-
-            {/* Cash in Bank */}
-            <Card className="px-6 py-5 border border-slate-200 rounded-2xl shadow-sm bg-white hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Cash in Bank</p>
-                <div className="p-2 bg-green-50 rounded-lg">
-                  <DollarSign className="w-4 h-4 text-green-600" />
-                </div>
+          {/* ── CASH IN BANK — Dominant Center (50%) ── */}
+          <Card className="lg:col-span-2 px-8 py-8 border border-green-200 rounded-2xl shadow-sm bg-gradient-to-br from-green-50 to-white hover:shadow-lg transition-shadow">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Cash in Bank</p>
+              <div className="p-3 bg-green-100 rounded-xl">
+                <DollarSign className="w-6 h-6 text-green-600" />
               </div>
-              <p className="text-2xl font-extrabold text-slate-900 mt-1">
-                ₹{(cashBalance / 100000).toFixed(2)}L
-              </p>
-              <p className="text-xs text-slate-500 mt-1">Total Balance</p>
-              <Button variant="link" className="text-xs text-slate-600 p-0 h-auto mt-2">
-                View Accounts →
-              </Button>
-            </Card>
+            </div>
+            <p className="text-5xl font-extrabold text-slate-900 mt-2 font-mono">
+              ₹{(cashBalance / 100000).toFixed(2)}L
+            </p>
+            <p className="text-sm text-slate-600 mt-2">Total Available Balance</p>
+            <div className="mt-4 pt-4 border-t border-green-100 space-y-2">
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-600">Across {effectiveBankAccounts.length} accounts</span>
+                <span className={`font-semibold ${cashBalance > monthlyBurn * 3 ? 'text-green-600' : cashBalance > monthlyBurn ? 'text-amber-600' : 'text-red-600'}`}>
+                  {cashBalance > monthlyBurn * 3 ? '✓ Healthy' : cashBalance > monthlyBurn ? '⚠ Watch' : '🔴 Critical'}
+                </span>
+              </div>
+            </div>
+            <Button variant="link" className="text-sm text-slate-600 p-0 h-auto mt-3">
+              View Accounts →
+            </Button>
+          </Card>
 
-            {/* Runway */}
+          {/* ── Right Column: Runway + Receivables (25%) ── */}
+          <div className="lg:col-span-1 space-y-4">
+            
+            {/* Runway Card */}
             <Card className={`px-6 py-5 border rounded-2xl shadow-sm hover:shadow-md transition-shadow ${runwayBg}`}>
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Runway</p>
-                <div className="p-2 bg-white/70 rounded-lg">
-                  <TrendingUp className={`w-4 h-4 ${runwayColor}`} />
-                </div>
+                <TrendingUp className={`w-4 h-4 ${runwayColor}`} />
               </div>
-              <p className={`text-2xl font-extrabold mt-1 ${runwayColor}`}>
-                {runway.toFixed(1)} <span className="text-sm font-semibold ml-0.5">Months</span>
+              <p className={`text-3xl font-extrabold mt-1 ${runwayColor}`}>
+                {runway.toFixed(1)} <span className="text-sm font-semibold">mo</span>
               </p>
               <p className="text-xs text-slate-600 mt-1">Until {new Date(todayDate).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}</p>
-              <Button variant="link" className="text-xs text-slate-600 p-0 h-auto mt-2">
-                See Details →
-              </Button>
             </Card>
 
-            {/* Pending Receivables (NEW) */}
+            {/* Pending Receivables Card */}
             <Card className="px-6 py-5 border border-slate-200 rounded-2xl shadow-sm bg-white hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Pending Receivables</p>
-                <div className="p-2 bg-blue-50 rounded-lg">
-                  <FileText className="w-4 h-4 text-blue-600" />
-                </div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Receivables</p>
+                <FileText className="w-4 h-4 text-blue-600" />
               </div>
-              <p className="text-2xl font-extrabold text-slate-900 mt-1">
+              <p className="text-3xl font-extrabold text-slate-900 mt-1">
                 ₹{(pendingReceivables / 100000).toFixed(2)}L
               </p>
-              <p className="text-xs text-slate-500 mt-1">{state.invoices.filter(inv => inv.type === 'Revenue' && (inv.status === 'Pending' || inv.status === 'Sent')).length} Invoices</p>
-              <Button variant="link" className="text-xs text-slate-600 p-0 h-auto mt-2">
-                View Invoices →
-              </Button>
-            </Card>
-
-            {/* Monthly Burn */}
-            <Card className="px-6 py-5 border border-slate-200 rounded-2xl shadow-sm bg-white hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Monthly Burn</p>
-                <div className="p-2 bg-red-50 rounded-lg">
-                  <TrendingDown className="w-4 h-4 text-red-600" />
-                </div>
-              </div>
-              <p className="text-2xl font-extrabold text-red-600 mt-1">
-                ₹{(monthlyBurn / 100000).toFixed(2)}L
-              </p>
-              <p className="text-xs text-slate-500 mt-1">Average per month</p>
-              <Button variant="link" className="text-xs text-slate-600 p-0 h-auto mt-2">
-                View Breakdown →
-              </Button>
+              <p className="text-xs text-slate-500 mt-1">{state.invoices.filter(inv => inv.type === 'Revenue' && (inv.status === 'Pending' || inv.status === 'Sent')).length} invoices</p>
             </Card>
           </div>
         </div>

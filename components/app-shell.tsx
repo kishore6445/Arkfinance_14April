@@ -46,16 +46,11 @@ export function AppShell({ children, activeNavItem = 'snapshot', pageTitle = "To
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
-    dashboard: true,
+    command: true,
+    money: true,
     operations: true,
-    cash: true,
-    obligations: true,
-    automation: true,
-    payroll: true,
-    inventory: true,
-    analysis: true,
-    approvals: true,
-    admin: false,
+    control: true,
+    settings: false,
   });
 
   const handleNavClick = (navId: string) => {
@@ -122,113 +117,48 @@ export function AppShell({ children, activeNavItem = 'snapshot', pageTitle = "To
 
   const navCategories: NavCategory[] = [
     {
-      id: 'dashboard',
-      label: 'Dashboard',
+      id: 'command',
+      label: 'COMMAND',
       items: [
         { id: 'snapshot', label: 'Snapshot', icon: LayoutGrid },
       ],
       defaultExpanded: true,
     },
     {
+      id: 'money',
+      label: 'MONEY',
+      items: [
+        { id: 'bank-accounts', label: 'Cash & Bank', icon: Landmark },
+        { id: 'invoices', label: 'Invoices', icon: FileText },
+        { id: 'bucket-allocation', label: 'Cash Buckets', icon: Boxes },
+      ],
+      defaultExpanded: true,
+    },
+    {
       id: 'operations',
-      label: 'Core Operations',
+      label: 'OPERATIONS',
       items: [
         { id: 'inbox', label: 'Inbox', icon: Mail },
-        { id: 'buckets', label: 'Buckets', icon: Boxes },
-        { id: 'invoices', label: 'Invoices', icon: FileText },
+        { id: 'recurring', label: 'Recurring Transactions', icon: Clock },
+        { id: 'budgets', label: 'Budgets', icon: Target },
+        { id: 'vendors', label: 'Vendors', icon: Users },
+        { id: 'payroll-processing', label: 'Payroll', icon: DollarSign },
       ],
       defaultExpanded: true,
     },
     {
-      id: 'cash',
-      label: 'Cash Management',
+      id: 'control',
+      label: 'CONTROL',
       items: [
         { id: 'reconciliation', label: 'Bank Reconciliation', icon: CheckSquare },
-        { id: 'bank-accounts', label: 'Bank Accounts', icon: Landmark },
-        { id: 'bucket-allocation', label: 'Bucket Allocation', icon: Boxes },
-        { id: 'runway', label: 'Cash Runway', icon: TrendingDown },
-      ],
-      defaultExpanded: true,
-    },
-    {
-      id: 'obligations',
-      label: 'Compliance & Obligations',
-      items: [
-        { id: 'obligations', label: 'Obligations', icon: AlertCircle },
-        { id: 'compliance', label: 'Compliance Tasks', icon: Shield },
-      ],
-      defaultExpanded: true,
-    },
-    {
-      id: 'automation',
-      label: 'Automation & Planning',
-      items: [
-        { id: 'recurring', label: 'Recurring Transactions', icon: Clock },
-        { id: 'vendors', label: 'Vendors', icon: Users },
-        { id: 'budgets', label: 'Budgets', icon: Target },
-      ],
-      defaultExpanded: true,
-    },
-    {
-      id: 'payroll',
-      label: 'Payroll Management',
-      items: [
-        { id: 'employees', label: 'Employees', icon: Users2 },
-        { id: 'salary-structure', label: 'Salary Structure', icon: DollarSign },
-        { id: 'payroll-processing', label: 'Payroll Processing', icon: FileText },
-        { id: 'payroll-register', label: 'Payroll Register', icon: BarChart3 },
-        { id: 'salary-slip', label: 'Salary Slips', icon: FileText },
-        { id: 'payroll-settings', label: 'Payroll Settings', icon: Settings },
-      ],
-      defaultExpanded: true,
-    },
-    {
-      id: 'inventory',
-      label: 'Inventory Management',
-      items: [
-        { id: 'stock-master', label: 'Stock Master', icon: Package },
-        { id: 'stock-movements', label: 'Stock Movements', icon: ArrowRight },
-        { id: 'stock-valuation', label: 'Stock Valuation', icon: PieChart },
-        { id: 'stock-adjustments', label: 'Stock Adjustments', icon: Settings },
-        { id: 'stock-reports', label: 'Stock Reports', icon: BarChart3 },
-      ],
-      defaultExpanded: true,
-    },
-    {
-      id: 'cfo-hub',
-      label: 'CFO Hub',
-      items: [
-        { id: 'cfo-dashboard', label: 'Dashboard', icon: BarChart3 },
-        { id: 'compliance-deadlines', label: 'Compliance Calendar', icon: Calendar },
-        { id: 'weekly-reports', label: 'Weekly Reports', icon: FileText },
-        { id: 'monthly-calls', label: 'Monthly Calls', icon: Phone },
-        { id: 'client-alerts', label: 'Client Alerts', icon: AlertCircle },
-        { id: 'client-directory', label: 'Client Directory', icon: Users },
-      ],
-      defaultExpanded: true,
-    },
-    {
-      id: 'analysis',
-      label: 'Analysis & Reports',
-      items: [
-        { id: 'aging', label: 'Aging Analysis', icon: ListTodo },
-        { id: 'financial-statements', label: 'Financial Statements', icon: PieChart },
+        { id: 'compliance', label: 'Compliance', icon: Shield },
         { id: 'reports', label: 'Reports', icon: BarChart3 },
       ],
-      defaultExpanded: false,
+      defaultExpanded: true,
     },
     {
-      id: 'approvals',
-      label: 'Team & Approvals',
-      items: [
-        { id: 'approvals', label: 'Approval Queue', icon: Clock },
-        { id: 'notifications', label: 'Notifications', icon: Bell },
-      ],
-      defaultExpanded: false,
-    },
-    {
-      id: 'admin',
-      label: 'Administration',
+      id: 'settings',
+      label: 'SETTINGS',
       items: [
         { id: 'import', label: 'Import Data', icon: Upload },
         { id: 'settings', label: 'Settings', icon: Settings },
@@ -237,14 +167,8 @@ export function AppShell({ children, activeNavItem = 'snapshot', pageTitle = "To
     },
   ];
 
-  // Filter navigation categories based on organization settings
-  const filteredNavCategories = navCategories.filter((category) => {
-    // Hide inventory management if not enabled for this organization
-    if (category.id === 'inventory' && !currentOrganization?.settings?.inventoryManagementEnabled) {
-      return false;
-    }
-    return true;
-  });
+  // No filtering needed - all categories are now core to the app
+  const filteredNavCategories = navCategories;
 
   return (
     <div className="flex h-screen bg-background">
