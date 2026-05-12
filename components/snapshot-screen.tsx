@@ -785,11 +785,22 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
                 <h2 className="text-2xl font-bold text-slate-900">Money Waiting To Come In</h2>
                 <p className="text-sm text-slate-400 mt-1">Invoice Status</p>
               </div>
-              {invoiceOverdue > 0 && (
-                <div className="px-4 py-2 bg-red-50 border border-red-200 rounded-lg">
-                  <p className="text-xs font-bold text-red-600">⚠ NEEDS ATTENTION</p>
-                </div>
-              )}
+              <div className="flex items-center gap-3">
+                <select className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="this-month">This Month (1 – 19 May)</option>
+                  <option value="last-month">Last Month (1 – 30 Apr)</option>
+                  <option value="this-quarter">This Quarter (1 Apr – 30 Jun)</option>
+                  <option value="last-quarter">Last Quarter (1 Jan – 31 Mar)</option>
+                  <option value="year-to-date">Year to Date (1 Jan – 19 May)</option>
+                  <option value="last-year">Last 12 Months</option>
+                  <option value="custom">Custom Range</option>
+                </select>
+                {invoiceOverdue > 0 && (
+                  <div className="px-4 py-2 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-xs font-bold text-red-600">NEEDS ATTENTION</p>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* HERO: Overdue Amount (Biggest Priority) */}
@@ -852,8 +863,17 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
             <div className="flex items-center justify-between mb-8">
               <div>
                 <h2 className="text-2xl font-bold text-slate-900">Where Your Money Is Going</h2>
-                <p className="text-sm text-slate-400 mt-1">Expense Breakdown - This Month</p>
+                <p className="text-sm text-slate-400 mt-1">Expense Breakdown</p>
               </div>
+              <select className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="this-month">This Month (1 – 19 May)</option>
+                <option value="last-month">Last Month (1 – 30 Apr)</option>
+                <option value="this-quarter">This Quarter (1 Apr – 30 Jun)</option>
+                <option value="last-quarter">Last Quarter (1 Jan – 31 Mar)</option>
+                <option value="year-to-date">Year to Date (1 Jan – 19 May)</option>
+                <option value="last-year">Last 12 Months</option>
+                <option value="custom">Custom Range</option>
+              </select>
             </div>
 
             {/* Horizontal Allocation Bars with Benchmarks */}
@@ -915,7 +935,7 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
           </Card>
         </div>
 
-        {/* ══════════════════════════════════════════════════════════════════
+        {/* ══════════════════════════════════════════════════════��═══════════
             SECTION 5 — CASH ALLOCATION: Horizontal stacked bar
         ═══════════════════════════════════════════════���══════════════════ */}
         <Card className="p-8 border border-slate-200 rounded-2xl shadow-sm bg-white">
