@@ -5,9 +5,10 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { 
   AlertCircle, TrendingUp, TrendingDown, DollarSign, Calendar, AlertTriangle, 
-  CheckCircle2, Eye, FileText, BarChart3, PieChart, ArrowRight, Zap, Clock, Landmark, Boxes
+  CheckCircle2, Eye, FileText, BarChart3, PieChart, ArrowRight, Zap, Clock, Landmark, Boxes,
+  Users, RefreshCcw, Target
 } from 'lucide-react';
-import { LineChart, Line, BarChart, Bar, PieChart as RechartsPie, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, BarChart, Bar, PieChart as RechartsPie, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { useAppState } from '@/context/app-state';
 import { calculateRunway, calculateHealthScore, calculateDSO } from '@/lib/calculations';
 import { getSupabaseClient } from '@/lib/supabase/client';
@@ -472,17 +473,17 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
         </div>
 
         {/* ══════════════════════════════════════════════════════════════════
-            SECTION 1 — HERO: Health gauge (60%) + 3 KPI cards (40%)
+            SECTION 1 — HERO: Health gauge (50%) + 4 KPI cards 2×2 (50%)
         ══════════════════════════════════════════════════════════════════ */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 items-stretch">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
 
-          {/* ── Business Health — semi-circle gauge dominant card (60%) ── */}
-          <Card className={`lg:col-span-3 p-8 border rounded-2xl shadow-sm ${healthBg} flex flex-col`}>
+          {/* ── Business Health — semi-circle gauge dominant card (50%) ── */}
+          <Card className={`p-8 border rounded-2xl shadow-sm ${healthBg} flex flex-col`}>
             <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-5">Business Health</p>
 
             {/* Semi-circle gauge */}
             <div className="flex flex-col items-center">
-              <svg viewBox="0 0 220 120" className="w-64 overflow-visible" aria-hidden="true">
+              <svg viewBox="0 0 220 120" className="w-56 overflow-visible" aria-hidden="true">
                 {/* background track */}
                 <path
                   d={gaugeArc(100, 90, 110, 110)}
@@ -515,190 +516,318 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
               <p className="text-sm text-slate-600 leading-relaxed mt-3 text-center max-w-xs">
                 {healthInsight}
               </p>
+
+              <Button variant="ghost" className="text-sm text-slate-600 hover:text-slate-900 mt-4 px-0">
+                View Health Details →
+              </Button>
             </div>
           </Card>
 
-          {/* ── 3 KPI cards stacked (40%) ── */}
-          <div className="lg:col-span-2 flex flex-col gap-4">
+          {/* ── 4 KPI cards in 2×2 grid (50%) ── */}
+          <div className="grid grid-cols-2 gap-4">
 
-            {/* Cash Available */}
-            <Card className="flex-1 px-6 py-5 border border-slate-200 rounded-2xl shadow-sm bg-white hover:shadow-md transition-shadow">
+            {/* Cash in Bank */}
+            <Card className="px-6 py-5 border border-slate-200 rounded-2xl shadow-sm bg-white hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Cash Available</p>
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Cash in Bank</p>
                 <div className="p-2 bg-green-50 rounded-lg">
                   <DollarSign className="w-4 h-4 text-green-600" />
                 </div>
               </div>
-              <p className="text-3xl font-extrabold text-slate-900 mt-1">
+              <p className="text-2xl font-extrabold text-slate-900 mt-1">
                 ₹{(cashBalance / 100000).toFixed(2)}L
               </p>
-              <p className="text-xs text-slate-500 mt-1">
-                Across <span className="font-semibold text-slate-700">{effectiveBankAccounts.length} account{effectiveBankAccounts.length !== 1 ? 's' : ''}</span>
-              </p>
+              <p className="text-xs text-slate-500 mt-1">Total Balance</p>
+              <Button variant="link" className="text-xs text-slate-600 p-0 h-auto mt-2">
+                View Accounts →
+              </Button>
             </Card>
 
             {/* Runway */}
-            <Card className={`flex-1 px-6 py-5 border rounded-2xl shadow-sm hover:shadow-md transition-shadow ${runwayBg}`}>
+            <Card className={`px-6 py-5 border rounded-2xl shadow-sm hover:shadow-md transition-shadow ${runwayBg}`}>
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Runway</p>
                 <div className="p-2 bg-white/70 rounded-lg">
                   <TrendingUp className={`w-4 h-4 ${runwayColor}`} />
                 </div>
               </div>
-              <p className={`text-3xl font-extrabold mt-1 ${runwayColor}`}>
-                {runway.toFixed(1)}<span className="text-lg font-semibold ml-1">months</span>
+              <p className={`text-2xl font-extrabold mt-1 ${runwayColor}`}>
+                {runway.toFixed(1)} <span className="text-sm font-semibold ml-0.5">Months</span>
               </p>
-              <p className="text-xs text-slate-600 mt-1">
-                Burn: <span className="font-semibold">₹{(monthlyBurn / 100000).toFixed(1)}L / mo</span>
-              </p>
+              <p className="text-xs text-slate-600 mt-1">Until {new Date(todayDate).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}</p>
+              <Button variant="link" className="text-xs text-slate-600 p-0 h-auto mt-2">
+                See Details →
+              </Button>
             </Card>
 
-            {/* Net Cash Flow */}
-            <Card className="flex-1 px-6 py-5 border border-slate-200 rounded-2xl shadow-sm bg-white hover:shadow-md transition-shadow">
+            {/* Pending Receivables (NEW) */}
+            <Card className="px-6 py-5 border border-slate-200 rounded-2xl shadow-sm bg-white hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Net Cash Flow</p>
-                <div className={`p-2 rounded-lg ${monthlyNetCashFlow >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
-                  {monthlyNetCashFlow >= 0
-                    ? <TrendingUp className="w-4 h-4 text-green-600" />
-                    : <TrendingDown className="w-4 h-4 text-red-600" />
-                  }
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Pending Receivables</p>
+                <div className="p-2 bg-blue-50 rounded-lg">
+                  <FileText className="w-4 h-4 text-blue-600" />
                 </div>
               </div>
-              <p className={`text-3xl font-extrabold mt-1 ${monthlyNetCashFlow >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {monthlyNetCashFlow >= 0 ? '+' : '-'}₹{(Math.abs(monthlyNetCashFlow) / 100000).toFixed(2)}L
+              <p className="text-2xl font-extrabold text-slate-900 mt-1">
+                ₹{(pendingReceivables / 100000).toFixed(2)}L
               </p>
-              <div className="flex justify-between text-xs text-slate-500 mt-1">
-                <span>In: <span className="font-semibold text-green-600">₹{(monthlyRevenue / 100000).toFixed(1)}L</span></span>
-                <span>Out: <span className="font-semibold text-red-600">₹{(monthlyBurn / 100000).toFixed(1)}L</span></span>
+              <p className="text-xs text-slate-500 mt-1">{state.invoices.filter(inv => inv.type === 'Revenue' && (inv.status === 'Pending' || inv.status === 'Sent')).length} Invoices</p>
+              <Button variant="link" className="text-xs text-slate-600 p-0 h-auto mt-2">
+                View Invoices →
+              </Button>
+            </Card>
+
+            {/* Monthly Burn */}
+            <Card className="px-6 py-5 border border-slate-200 rounded-2xl shadow-sm bg-white hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Monthly Burn</p>
+                <div className="p-2 bg-red-50 rounded-lg">
+                  <TrendingDown className="w-4 h-4 text-red-600" />
+                </div>
+              </div>
+              <p className="text-2xl font-extrabold text-red-600 mt-1">
+                ₹{(monthlyBurn / 100000).toFixed(2)}L
+              </p>
+              <p className="text-xs text-slate-500 mt-1">Average per month</p>
+              <Button variant="link" className="text-xs text-slate-600 p-0 h-auto mt-2">
+                View Breakdown →
+              </Button>
+            </Card>
+          </div>
+        </div>
+
+        {/* ══════════════════════════════════════════════════════════════════
+            SECTION 2 — PERFORMANCE OVERVIEW: 3 charts in a row
+        ══════════════════════════════════════════════════════════════════ */}
+        <div>
+          <h2 className="text-xl font-bold text-slate-900 mb-5">Performance Overview</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+            {/* Revenue vs Expenses — vertical bar chart */}
+            <Card className="p-6 border border-slate-200 rounded-2xl shadow-sm bg-white">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Revenue vs Expenses</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">This Month</p>
+                </div>
+              </div>
+              <div style={{ width: '100%', height: 200 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={[
+                      { period: '1 May', revenue: Math.round(revBase * 0.22), expenses: Math.round(expBase * 0.28) },
+                      { period: '7 May', revenue: Math.round(revBase * 0.26), expenses: Math.round(expBase * 0.24) },
+                      { period: '13 May', revenue: Math.round(revBase * 0.28), expenses: Math.round(expBase * 0.22) },
+                      { period: '19 May', revenue: Math.round(revBase * 0.24), expenses: Math.round(expBase * 0.26) },
+                    ]}
+                    margin={{ left: -25, right: 10, top: 5, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                    <XAxis dataKey="period" stroke="#94a3b8" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <YAxis stroke="#94a3b8" tick={{ fontSize: 10 }} tickFormatter={(v) => `₹${(v / 100000).toFixed(0)}L`} width={35} axisLine={false} tickLine={false} />
+                    <Tooltip formatter={(value: number) => `₹${(value / 100000).toFixed(1)}L`} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Bar dataKey="revenue"  fill="#16A34A" name="Revenue"  radius={[6, 6, 0, 0]} maxBarSize={20} />
+                    <Bar dataKey="expenses" fill="#DC2626" name="Expenses" radius={[6, 6, 0, 0]} maxBarSize={20} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="mt-4 pt-4 border-t border-slate-100 flex justify-around text-center text-xs">
+                <div>
+                  <p className="text-slate-500">Revenue</p>
+                  <p className="font-bold text-slate-900 mt-1">₹{(revBase / 100000).toFixed(1)}L</p>
+                  <p className="text-green-600 text-xs mt-0.5">↑ 18%</p>
+                </div>
+                <div>
+                  <p className="text-slate-500">Expenses</p>
+                  <p className="font-bold text-slate-900 mt-1">₹{(expBase / 100000).toFixed(1)}L</p>
+                  <p className="text-red-600 text-xs mt-0.5">↑ 4%</p>
+                </div>
+                <div>
+                  <p className="text-slate-500">Profit</p>
+                  <p className="font-bold text-slate-900 mt-1">₹{((revBase - expBase) / 100000).toFixed(1)}L</p>
+                  <p className="text-green-600 text-xs mt-0.5">↑ 67%</p>
+                </div>
+              </div>
+            </Card>
+
+            {/* Cash Flow Trend — line chart */}
+            <Card className="p-6 border border-slate-200 rounded-2xl shadow-sm bg-white">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Cash Flow Trend</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">This Month</p>
+                </div>
+              </div>
+              <div style={{ width: '100%', height: 200 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={[
+                      { day: '1 May', cashIn: Math.round(revBase * 0.13), cashOut: Math.round(expBase * 0.16), net: Math.round(revBase * 0.13) - Math.round(expBase * 0.16) },
+                      { day: '7 May', cashIn: Math.round(revBase * 0.15), cashOut: Math.round(expBase * 0.14), net: Math.round(revBase * 0.15) - Math.round(expBase * 0.14) },
+                      { day: '13 May', cashIn: Math.round(revBase * 0.12), cashOut: Math.round(expBase * 0.15), net: Math.round(revBase * 0.12) - Math.round(expBase * 0.15) },
+                      { day: '19 May', cashIn: Math.round(revBase * 0.16), cashOut: Math.round(expBase * 0.13), net: Math.round(revBase * 0.16) - Math.round(expBase * 0.13) },
+                    ]}
+                    margin={{ left: -25, right: 10, top: 5, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis dataKey="day" stroke="#94a3b8" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <YAxis stroke="#94a3b8" tick={{ fontSize: 10 }} tickFormatter={(v) => `₹${(v / 100000).toFixed(0)}L`} width={35} axisLine={false} tickLine={false} />
+                    <Tooltip formatter={(value: number) => `₹${(value / 100000).toFixed(1)}L`} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Line type="monotone" dataKey="cashIn"  stroke="#16A34A" strokeWidth={2} dot={false} name="Cash In" />
+                    <Line type="monotone" dataKey="cashOut" stroke="#DC2626" strokeWidth={2} dot={false} name="Cash Out" />
+                    <Line type="monotone" dataKey="net"     stroke="#2563EB" strokeWidth={2} dot={{ r: 3, fill: '#2563EB' }} name="Net" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="mt-4 pt-4 border-t border-slate-100">
+                <p className="text-xs text-green-600 font-semibold">Cash increasing this month</p>
+              </div>
+            </Card>
+
+            {/* Profitability — area chart (NEW) */}
+            <Card className="p-6 border border-slate-200 rounded-2xl shadow-sm bg-white">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Profitability</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">This Month</p>
+                </div>
+              </div>
+              <div style={{ width: '100%', height: 200 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={[
+                      { day: '1 May', profit: profitabilityMargin * 0.85 },
+                      { day: '7 May', profit: profitabilityMargin * 0.88 },
+                      { day: '13 May', profit: profitabilityMargin * 0.92 },
+                      { day: '19 May', profit: profitabilityMargin },
+                    ]}
+                    margin={{ left: -25, right: 10, top: 5, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis dataKey="day" stroke="#94a3b8" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <YAxis stroke="#94a3b8" tick={{ fontSize: 10 }} tickFormatter={(v) => `${v.toFixed(0)}%`} width={35} axisLine={false} tickLine={false} />
+                    <Tooltip formatter={(value: number) => `${value.toFixed(1)}%`} />
+                    <Area type="monotone" dataKey="profit" stroke="#7C3AED" fill="#7C3AED" fillOpacity={0.1} strokeWidth={2} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="mt-4 pt-4 border-t border-slate-100">
+                <p className="text-sm font-bold text-slate-900">{profitabilityMargin.toFixed(1)}%</p>
+                <p className="text-xs text-slate-500">Net Profit Margin</p>
+                <p className="text-xs text-green-600 font-semibold mt-1">↑ Profitability is improving</p>
               </div>
             </Card>
           </div>
         </div>
 
         {/* ══════════════════════════════════════════════════════════════════
-            SECTION 2 — PERFORMANCE: Rev vs Exp (vertical bars) | Cash Flow (line)
+            SECTION 3 — CEO INSIGHTS: Auto-generated key business metrics
         ══════════════════════════════════════════════════════════════════ */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Zap className="w-5 h-5 text-blue-600" />
+              <h2 className="text-xl font-bold text-slate-900">CEO Insights</h2>
+            </div>
+            <Button variant="ghost" className="text-sm text-slate-600 hover:text-slate-900">
+              View All Insights →
+            </Button>
+          </div>
 
-          {/* Revenue vs Expenses — vertical bar chart */}
-          <Card className="p-7 border border-slate-200 rounded-2xl shadow-sm bg-white">
-            <div className="flex items-start justify-between mb-5">
-              <div>
-                <h2 className="text-lg font-bold text-slate-900">Revenue vs Expenses</h2>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  {revBase > expBase ? 'Revenue is ahead of expenses' : 'Expenses are exceeding revenue'}
-                </p>
-              </div>
-              <select className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 outline-none cursor-pointer">
-                <option>Weekly</option>
-                <option>Monthly</option>
-              </select>
-            </div>
-            <div style={{ width: '100%', height: 240 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={[
-                    { period: 'Wk 1', revenue: Math.round(revBase * 0.22), expenses: Math.round(expBase * 0.28) },
-                    { period: 'Wk 2', revenue: Math.round(revBase * 0.26), expenses: Math.round(expBase * 0.24) },
-                    { period: 'Wk 3', revenue: Math.round(revBase * 0.28), expenses: Math.round(expBase * 0.22) },
-                    { period: 'Wk 4', revenue: Math.round(revBase * 0.24), expenses: Math.round(expBase * 0.26) },
-                  ]}
-                  margin={{ left: 0, right: 10, top: 5, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis dataKey="period" stroke="#94a3b8" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-                  <YAxis stroke="#94a3b8" tick={{ fontSize: 11 }} tickFormatter={(v) => `₹${(v / 100000).toFixed(1)}L`} width={55} axisLine={false} tickLine={false} />
-                  <Tooltip formatter={(value: number) => `₹${(value / 100000).toFixed(2)}L`} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="revenue"  fill="#16A34A" name="Revenue"  radius={[6, 6, 0, 0]} maxBarSize={28} />
-                  <Bar dataKey="expenses" fill="#DC2626" name="Expenses" radius={[6, 6, 0, 0]} maxBarSize={28} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
-
-          {/* Cash Flow Trend — line chart */}
-          <Card className="p-7 border border-slate-200 rounded-2xl shadow-sm bg-white">
-            <div className="flex items-start justify-between mb-5">
-              <div>
-                <h2 className="text-lg font-bold text-slate-900">Cash Flow Trend</h2>
-                <p className="text-xs text-slate-400 mt-0.5">7-day rolling cash balance</p>
-              </div>
-            </div>
-            <div style={{ width: '100%', height: 240 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart
-                  data={[
-                    { day: 'Mon', cashIn: Math.round(revBase * 0.13), cashOut: Math.round(expBase * 0.16), net: Math.round(revBase * 0.13) - Math.round(expBase * 0.16) },
-                    { day: 'Tue', cashIn: Math.round(revBase * 0.15), cashOut: Math.round(expBase * 0.14), net: Math.round(revBase * 0.15) - Math.round(expBase * 0.14) },
-                    { day: 'Wed', cashIn: Math.round(revBase * 0.12), cashOut: Math.round(expBase * 0.15), net: Math.round(revBase * 0.12) - Math.round(expBase * 0.15) },
-                    { day: 'Thu', cashIn: Math.round(revBase * 0.16), cashOut: Math.round(expBase * 0.13), net: Math.round(revBase * 0.16) - Math.round(expBase * 0.13) },
-                    { day: 'Fri', cashIn: Math.round(revBase * 0.18), cashOut: Math.round(expBase * 0.12), net: Math.round(revBase * 0.18) - Math.round(expBase * 0.12) },
-                    { day: 'Sat', cashIn: Math.round(revBase * 0.14), cashOut: Math.round(expBase * 0.11), net: Math.round(revBase * 0.14) - Math.round(expBase * 0.11) },
-                    { day: 'Sun', cashIn: Math.round(revBase * 0.12), cashOut: Math.round(expBase * 0.19), net: Math.round(revBase * 0.12) - Math.round(expBase * 0.19) },
-                  ]}
-                  margin={{ left: 0, right: 10, top: 5, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="day" stroke="#94a3b8" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-                  <YAxis stroke="#94a3b8" tick={{ fontSize: 11 }} tickFormatter={(v) => `₹${(v / 100000).toFixed(1)}L`} width={55} axisLine={false} tickLine={false} />
-                  <Tooltip formatter={(value: number) => `₹${(value / 100000).toFixed(2)}L`} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Line type="monotone" dataKey="cashIn"  stroke="#16A34A" strokeWidth={2} dot={false} name="Cash In" />
-                  <Line type="monotone" dataKey="cashOut" stroke="#DC2626" strokeWidth={2} dot={false} name="Cash Out" />
-                  <Line type="monotone" dataKey="net"     stroke="#2563EB" strokeWidth={2.5} dot={{ r: 4, fill: '#2563EB' }} activeDot={{ r: 6 }} name="Net" />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
+            {ceoInsights.map((insight, idx) => (
+              <Card key={idx} className="p-5 border border-slate-200 rounded-2xl shadow-sm bg-white hover:shadow-md transition-shadow">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center mb-3 ${
+                  insight.color === 'text-orange-600' ? 'bg-orange-50' :
+                  insight.color === 'text-blue-600' ? 'bg-blue-50' :
+                  insight.color === 'text-red-600' ? 'bg-red-50' :
+                  insight.color === 'text-purple-600' ? 'bg-purple-50' :
+                  'bg-green-50'
+                }`}>
+                  {insight.icon === 'TrendingUp' && <TrendingUp className={`w-4 h-4 ${insight.color}`} />}
+                  {insight.icon === 'Users' && <Users className={`w-4 h-4 ${insight.color}`} />}
+                  {insight.icon === 'AlertTriangle' && <AlertTriangle className={`w-4 h-4 ${insight.color}`} />}
+                  {insight.icon === 'RefreshCcw' && <RefreshCcw className={`w-4 h-4 ${insight.color}`} />}
+                  {insight.icon === 'Target' && <Target className={`w-4 h-4 ${insight.color}`} />}
+                </div>
+                <p className="text-sm text-slate-700 leading-relaxed">{insight.text}</p>
+              </Card>
+            ))}
+          </div>
         </div>
 
         {/* ══════════════════════════════════════════════════════════════════
-            SECTION 3 — BREAKDOWN: Revenue Source | Expense Breakdown | Invoice Status
+            SECTION 4 — BREAKDOWN: Invoice Status (donut) & others
         ══════════════════════════════════════════════════════════════════ */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-          {/* 3a: Revenue by Source — pie */}
+          {/* Invoice Status — pie chart */}
           <Card className="p-6 border border-slate-200 rounded-2xl shadow-sm bg-white">
-            <h2 className="text-base font-bold text-slate-900 mb-1">Revenue by Source</h2>
-            <p className="text-xs text-slate-400 mb-4">Where income is coming from</p>
-            <div style={{ width: '100%', height: 200 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <RechartsPie>
-                  <Pie
-                    data={[
-                      { name: 'Services',  value: 55 },
-                      { name: 'Products',  value: 30 },
-                      { name: 'Recurring', value: 15 },
-                    ]}
-                    cx="50%" cy="50%"
-                    innerRadius={48} outerRadius={78}
-                    paddingAngle={2} dataKey="value" nameKey="name"
-                    labelLine={false}
-                    label={({ cx, cy, midAngle, innerRadius, outerRadius, value }) => {
-                      const RADIAN = Math.PI / 180;
-                      const radius = (innerRadius as number) + ((outerRadius as number) - (innerRadius as number)) * 0.5;
-                      const x = (cx as number) + radius * Math.cos(-midAngle * RADIAN);
-                      const y = (cy as number) + radius * Math.sin(-midAngle * RADIAN);
-                      return (
-                        <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight="700">
-                          {`${value}%`}
-                        </text>
-                      );
-                    }}
-                  >
-                    <Cell fill="#16A34A" />
-                    <Cell fill="#2563EB" />
-                    <Cell fill="#F59E0B" />
-                  </Pie>
-                  <Tooltip formatter={(value) => `${value}%`} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                </RechartsPie>
-              </ResponsiveContainer>
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Invoice Status</h2>
+                <p className="text-xs text-slate-400 mt-0.5">This Month</p>
+              </div>
+            </div>
+            <div className="flex flex-col items-center gap-4">
+              <div style={{ width: 200, height: 200 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <RechartsPie>
+                    <Pie
+                      data={[
+                        { name: 'Paid',    value: invoicePaid,    fill: '#16A34A' },
+                        { name: 'Pending', value: invoicePending, fill: '#2563EB' },
+                        { name: 'Overdue', value: invoiceOverdue, fill: '#DC2626' },
+                      ]}
+                      cx="50%" cy="50%"
+                      innerRadius={50} outerRadius={80}
+                      paddingAngle={2} dataKey="value" nameKey="name"
+                      labelLine={false}
+                      label={({ value }) => {
+                        const total = invoicePaid + invoicePending + invoiceOverdue;
+                        const pct = total > 0 ? Math.round((value / total) * 100) : 0;
+                        return `${pct}%`;
+                      }}
+                    >
+                      <Cell fill="#16A34A" />
+                      <Cell fill="#2563EB" />
+                      <Cell fill="#DC2626" />
+                    </Pie>
+                    <Tooltip formatter={(value) => `${value} invoices`} />
+                  </RechartsPie>
+                </ResponsiveContainer>
+              </div>
+              
+              <div className="space-y-2 text-center">
+                <p className="text-sm font-bold text-slate-900">₹{((invoicePaid + invoicePending + invoiceOverdue) * 250000 / 100000).toFixed(0)}L</p>
+                <p className="text-xs text-slate-500">Total Invoice Value</p>
+                {invoiceOverdue > 0 && (
+                  <p className="text-xs text-red-600 font-semibold">
+                    {invoiceOverdue} invoice{invoiceOverdue !== 1 ? 's' : ''} overdue worth ₹{(invoiceOverdue * 320000 / 100000).toFixed(0)}L
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-5 grid grid-cols-3 gap-3 text-center">
+              {[
+                { label: 'Paid',    count: invoicePaid,    color: 'bg-green-500' },
+                { label: 'Pending', count: invoicePending, color: 'bg-blue-500' },
+                { label: 'Overdue', count: invoiceOverdue, color: 'bg-red-500'   },
+              ].map(item => (
+                <div key={item.label}>
+                  <div className={`w-10 h-10 ${item.color} rounded-full flex items-center justify-center mx-auto mb-2`}>
+                    <span className="text-white font-bold text-sm">{item.count}</span>
+                  </div>
+                  <p className="text-xs text-slate-600">{item.label}</p>
+                </div>
+              ))}
             </div>
           </Card>
 
-          {/* 3b: Expense Breakdown — donut + insight */}
+          {/* Expense Breakdown — donut + insight */}
           <Card className="p-6 border border-slate-200 rounded-2xl shadow-sm bg-white">
             <h2 className="text-base font-bold text-slate-900 mb-1">Expense Breakdown</h2>
             <p className="text-xs text-slate-400 mb-4">Where your money is going</p>
@@ -734,62 +863,62 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
               </ResponsiveContainer>
             </div>
             {/* insight line */}
-            <p className="text-xs text-slate-600 mt-3 bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
+            <p className="text-xs text-slate-600 mt-4 bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
               Salaries contribute <span className="font-bold text-slate-800">45%</span> of total expenses this month
             </p>
           </Card>
-
-          {/* 3c: Invoice Status — stacked horizontal bar */}
-          <Card className="p-6 border border-slate-200 rounded-2xl shadow-sm bg-white">
-            <h2 className="text-base font-bold text-slate-900 mb-1">Invoice Status</h2>
-            <p className="text-xs text-slate-400 mb-4">
-              {invoiceOverdue > 0
-                ? `${invoiceOverdue} overdue invoice${invoiceOverdue > 1 ? 's' : ''} need attention`
-                : 'All invoices are on track'}
-            </p>
-
-            {/* stacked progress bar */}
-            {(() => {
-              const total = invoicePaid + invoicePending + invoiceOverdue;
-              const paidPct    = Math.round((invoicePaid    / total) * 100);
-              const pendingPct = Math.round((invoicePending / total) * 100);
-              const overduePct = 100 - paidPct - pendingPct;
-              return (
-                <>
-                  <div className="flex rounded-lg overflow-hidden h-7 w-full mb-4 gap-0.5">
-                    <div className="bg-green-500 flex items-center justify-center text-white text-xs font-bold transition-all" style={{ width: `${paidPct}%` }}>
-                      {paidPct > 15 ? `${paidPct}%` : ''}
-                    </div>
-                    <div className="bg-amber-400 flex items-center justify-center text-white text-xs font-bold transition-all" style={{ width: `${pendingPct}%` }}>
-                      {pendingPct > 15 ? `${pendingPct}%` : ''}
-                    </div>
-                    <div className="bg-red-500 flex items-center justify-center text-white text-xs font-bold transition-all" style={{ width: `${overduePct}%` }}>
-                      {overduePct > 15 ? `${overduePct}%` : ''}
-                    </div>
-                  </div>
-                  <div className="space-y-3">
-                    {[
-                      { label: 'Paid',    count: invoicePaid,    pct: paidPct,    color: 'bg-green-500' },
-                      { label: 'Pending', count: invoicePending, pct: pendingPct, color: 'bg-amber-400' },
-                      { label: 'Overdue', count: invoiceOverdue, pct: overduePct, color: 'bg-red-500'   },
-                    ].map(item => (
-                      <div key={item.label} className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${item.color}`} />
-                          <span className="text-sm text-slate-600">{item.label}</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-sm font-bold text-slate-900">{item.count}</span>
-                          <span className="text-xs text-slate-400 w-8 text-right">{item.pct}%</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              );
-            })()}
-          </Card>
         </div>
+
+        {/* ══════════════════════════════════════════════════════════════════
+            SECTION 5 — CASH ALLOCATION: Horizontal stacked bar
+        ══════════════════════════════════════════════════════════════════ */}
+        <Card className="p-6 border border-slate-200 rounded-2xl shadow-sm bg-white">
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Cash Allocation</h2>
+              <p className="text-xs text-slate-400 mt-0.5">Smart allocation of your money</p>
+            </div>
+            <Button variant="ghost" className="text-sm text-slate-600 hover:text-slate-900">
+              Manage Allocation →
+            </Button>
+          </div>
+
+          {/* Stacked horizontal bar */}
+          <div className="mb-5">
+            <div className="flex rounded-full overflow-hidden h-8 w-full gap-1">
+              <div className="bg-green-500 flex items-center justify-center text-white text-xs font-bold" style={{ width: '54%' }}>
+                Operating
+              </div>
+              <div className="bg-blue-500 flex items-center justify-center text-white text-xs font-bold" style={{ width: '16%' }}>
+                GST
+              </div>
+              <div className="bg-amber-400 flex items-center justify-center text-white text-xs font-bold" style={{ width: '17%' }}>
+                Salary
+              </div>
+              <div className="bg-purple-400 flex items-center justify-center text-white text-xs font-bold" style={{ width: '13%' }}>
+                Profit
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-4 gap-4">
+            {[
+              { name: 'Operating Account', amount: '₹6,20,000', pct: 54, color: 'bg-green-500' },
+              { name: 'GST Reserve', amount: '₹1,80,000', pct: 16, color: 'bg-blue-500' },
+              { name: 'Salary Reserve', amount: '₹2,00,000', pct: 17, color: 'bg-amber-400' },
+              { name: 'Profit Reserve', amount: '₹1,46,591', pct: 13, color: 'bg-purple-400' },
+            ].map(bucket => (
+              <div key={bucket.name}>
+                <p className="text-xs font-semibold text-slate-600 mb-2">{bucket.name}</p>
+                <p className="text-lg font-bold text-slate-900">{bucket.amount}</p>
+                <div className="flex items-center gap-2 mt-2">
+                  <div className={`w-2 h-2 rounded-full ${bucket.color}`} />
+                  <p className="text-xs text-slate-500">{bucket.pct}% allocation</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
 
         {/* ══════════════════════════════════════════════════════════════════
             SECTION 4 — ACTION CENTER: 4 alert cards
