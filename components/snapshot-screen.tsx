@@ -549,126 +549,182 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
         </div>
 
         {/* ══════════════════════════════════════════════════════════════════
-            SECTION 2 — PERFORMANCE OVERVIEW: 3 charts in a row
+            SECTION 2 — BUSINESS PERFORMANCE TIMELINE: Single narrative chart
         ══════════════════════════════════════════════════════════════════ */}
         <div>
-          <h2 className="text-xl font-bold text-slate-900 mb-5">Performance Overview</h2>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-slate-900 mb-2">Business Performance Timeline</h2>
+            <p className="text-slate-500">Understand your business performance and cash movement</p>
+          </div>
 
-            {/* Revenue vs Expenses — vertical bar chart */}
+          {/* TOP METRICS — What Changed This Month */}
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-8">
             <Card className="p-6 border border-slate-200 rounded-2xl shadow-sm bg-white">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">Revenue vs Expenses</h3>
-                  <p className="text-xs text-slate-400 mt-0.5">This Month</p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm text-slate-500 font-semibold">Revenue</p>
+                <div className="p-2 bg-green-50 rounded-lg"><TrendingUp className="w-4 h-4 text-green-600" /></div>
+              </div>
+              <p className="text-3xl font-extrabold text-slate-900">₹{(revBase / 100000).toFixed(1)}L</p>
+              <p className="text-sm text-green-600 font-bold mt-1">↑ 18% vs last month</p>
+            </Card>
+
+            <Card className="p-6 border border-slate-200 rounded-2xl shadow-sm bg-white">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm text-slate-500 font-semibold">Expenses</p>
+                <div className="p-2 bg-red-50 rounded-lg"><TrendingDown className="w-4 h-4 text-red-600" /></div>
+              </div>
+              <p className="text-3xl font-extrabold text-slate-900">₹{(expBase / 100000).toFixed(1)}L</p>
+              <p className="text-sm text-red-600 font-bold mt-1">↑ 4% vs last month</p>
+            </Card>
+
+            <Card className="p-6 border border-green-200 rounded-2xl shadow-sm bg-gradient-to-br from-green-50 to-white">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm text-slate-500 font-semibold">Profit</p>
+                <div className="p-2 bg-green-100 rounded-lg"><DollarSign className="w-4 h-4 text-green-700" /></div>
+              </div>
+              <p className="text-3xl font-extrabold text-green-700">₹{((revBase - expBase) / 100000).toFixed(1)}L</p>
+              <p className="text-sm text-green-600 font-bold mt-1">↑ 67% vs last month</p>
+            </Card>
+
+            <Card className="p-6 border border-slate-200 rounded-2xl shadow-sm bg-white">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm text-slate-500 font-semibold">Net Margin</p>
+                <div className="p-2 bg-blue-50 rounded-lg"><BarChart3 className="w-4 h-4 text-blue-600" /></div>
+              </div>
+              <p className="text-3xl font-extrabold text-slate-900">{profitabilityMargin.toFixed(1)}%</p>
+              <p className="text-sm text-blue-600 font-bold mt-1">↑ 9% vs last month</p>
+            </Card>
+
+            <Card className="p-6 border border-slate-200 rounded-2xl shadow-sm bg-white">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm text-slate-500 font-semibold">Best Week</p>
+                <div className="p-2 bg-purple-50 rounded-lg"><Calendar className="w-4 h-4 text-purple-600" /></div>
+              </div>
+              <p className="text-2xl font-extrabold text-slate-900">13–19 May</p>
+              <p className="text-xs text-slate-600 mt-1">Highest profit: ₹3.1L</p>
+            </Card>
+          </div>
+
+          {/* MAIN CHART — Unified Timeline */}
+          <Card className="p-8 border border-slate-200 rounded-2xl shadow-sm bg-white mb-8">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-slate-900">Revenue, Expenses & Profit Timeline</h3>
+              <div className="flex gap-2">
+                {[{ label: '7D', days: 7 }, { label: '30D', days: 30 }, { label: '90D', days: 90 }].map(period => (
+                  <Button key={period.days} variant="outline" className="text-xs px-3 py-1 border-slate-300">
+                    {period.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ width: '100%', height: 350 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={[
+                    { period: '1 May', revenue: Math.round(revBase * 0.22), expenses: Math.round(expBase * 0.28), profit: Math.round((revBase * 0.22) - (expBase * 0.28)), note: 'Month start' },
+                    { period: '8 May', revenue: Math.round(revBase * 0.25), expenses: Math.round(expBase * 0.23), profit: Math.round((revBase * 0.25) - (expBase * 0.23)), note: 'Big client payment' },
+                    { period: '13 May', revenue: Math.round(revBase * 0.28), expenses: Math.round(expBase * 0.25), profit: Math.round((revBase * 0.28) - (expBase * 0.25)), note: 'Marketing expenses ↑' },
+                    { period: '19 May', revenue: Math.round(revBase * 0.25), expenses: Math.round(expBase * 0.24), profit: Math.round((revBase * 0.25) - (expBase * 0.24)), note: 'Collections improved' },
+                  ]}
+                  margin={{ left: -20, right: 10, top: 30, bottom: 60 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                  <XAxis 
+                    dataKey="period" 
+                    stroke="#94a3b8" 
+                    tick={{ fontSize: 12, fontWeight: 500 }} 
+                    axisLine={{ stroke: '#e2e8f0' }}
+                    tickLine={false}
+                  />
+                  <YAxis 
+                    stroke="#94a3b8" 
+                    tick={{ fontSize: 11 }}
+                    tickFormatter={(v) => `₹${(v / 100000).toFixed(0)}L`}
+                    width={50}
+                    axisLine={{ stroke: '#e2e8f0' }}
+                    tickLine={false}
+                  />
+                  <Tooltip 
+                    formatter={(value: number) => `₹${(value / 100000).toFixed(1)}L`}
+                    contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: 12, fontWeight: 500 }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12, fontWeight: 500, paddingTop: 10 }} />
+                  <Bar dataKey="revenue"  fill="#16A34A" name="Revenue" radius={[6, 6, 0, 0]} maxBarSize={35} />
+                  <Bar dataKey="expenses" fill="#DC2626" name="Expenses" radius={[6, 6, 0, 0]} maxBarSize={35} />
+                  <Bar dataKey="profit"   fill="#2563EB" name="Profit"   radius={[6, 6, 0, 0]} maxBarSize={35} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Business Events & Insights on Timeline */}
+            <div className="mt-8 pt-6 border-t border-slate-200 space-y-4">
+              <p className="text-sm font-semibold text-slate-900">Key Events This Month</p>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="flex gap-3 p-4 bg-green-50 rounded-lg border border-green-100">
+                  <div className="text-lg">📌</div>
+                  <div>
+                    <p className="font-semibold text-slate-900 text-sm">8 May: Big Client Payment</p>
+                    <p className="text-xs text-slate-600 mt-1">Revenue spike helped boost monthly growth</p>
+                  </div>
+                </div>
+                <div className="flex gap-3 p-4 bg-red-50 rounded-lg border border-red-100">
+                  <div className="text-lg">🚨</div>
+                  <div>
+                    <p className="font-semibold text-slate-900 text-sm">13 May: Marketing Expenses</p>
+                    <p className="text-xs text-slate-600 mt-1">Campaign spending increased by ₹2.5L</p>
+                  </div>
+                </div>
+                <div className="flex gap-3 p-4 bg-blue-50 rounded-lg border border-blue-100">
+                  <div className="text-lg">💰</div>
+                  <div>
+                    <p className="font-semibold text-slate-900 text-sm">19 May: Collections Strong</p>
+                    <p className="text-xs text-slate-600 mt-1">Receivables converted, cash position improved</p>
+                  </div>
                 </div>
               </div>
-              <div style={{ width: '100%', height: 200 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={[
-                      { period: '1 May', revenue: Math.round(revBase * 0.22), expenses: Math.round(expBase * 0.28) },
-                      { period: '7 May', revenue: Math.round(revBase * 0.26), expenses: Math.round(expBase * 0.24) },
-                      { period: '13 May', revenue: Math.round(revBase * 0.28), expenses: Math.round(expBase * 0.22) },
-                      { period: '19 May', revenue: Math.round(revBase * 0.24), expenses: Math.round(expBase * 0.26) },
-                    ]}
-                    margin={{ left: -25, right: 10, top: 5, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                    <XAxis dataKey="period" stroke="#94a3b8" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <YAxis stroke="#94a3b8" tick={{ fontSize: 10 }} tickFormatter={(v) => `₹${(v / 100000).toFixed(0)}L`} width={35} axisLine={false} tickLine={false} />
-                    <Tooltip formatter={(value: number) => `₹${(value / 100000).toFixed(1)}L`} />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Bar dataKey="revenue"  fill="#16A34A" name="Revenue"  radius={[6, 6, 0, 0]} maxBarSize={20} />
-                    <Bar dataKey="expenses" fill="#DC2626" name="Expenses" radius={[6, 6, 0, 0]} maxBarSize={20} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="mt-4 pt-4 border-t border-slate-100 flex justify-around text-center text-xs">
+            </div>
+          </Card>
+
+          {/* PROFITABILITY INSIGHTS — Remove confusing empty graph */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <Card className="p-6 border border-slate-200 rounded-2xl shadow-sm bg-white">
+              <h3 className="text-lg font-bold text-slate-900 mb-4">Profitability Insights</h3>
+              <div className="space-y-4">
                 <div>
-                  <p className="text-slate-500">Revenue</p>
-                  <p className="font-bold text-slate-900 mt-1">₹{(revBase / 100000).toFixed(1)}L</p>
-                  <p className="text-green-600 text-xs mt-0.5">↑ 18%</p>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-semibold text-slate-600">Net Profit Margin</p>
+                    <p className="text-2xl font-bold text-green-600">{profitabilityMargin.toFixed(1)}%</p>
+                  </div>
+                  <p className="text-xs text-slate-600">
+                    Healthy range for your business: <span className="font-semibold">20–30%</span>
+                  </p>
+                  <p className="text-sm text-green-600 font-semibold mt-2">✓ You're performing well</p>
                 </div>
-                <div>
-                  <p className="text-slate-500">Expenses</p>
-                  <p className="font-bold text-slate-900 mt-1">₹{(expBase / 100000).toFixed(1)}L</p>
-                  <p className="text-red-600 text-xs mt-0.5">↑ 4%</p>
-                </div>
-                <div>
-                  <p className="text-slate-500">Profit</p>
-                  <p className="font-bold text-slate-900 mt-1">₹{((revBase - expBase) / 100000).toFixed(1)}L</p>
-                  <p className="text-green-600 text-xs mt-0.5">↑ 67%</p>
+                <div className="pt-4 border-t border-slate-200">
+                  <p className="text-sm text-slate-700 mb-2">
+                    <span className="font-semibold">Why improving:</span> Revenue grew 18% while expenses only grew 4%. This means better operational efficiency.
+                  </p>
                 </div>
               </div>
             </Card>
 
-            {/* Cash Flow Trend — line chart */}
             <Card className="p-6 border border-slate-200 rounded-2xl shadow-sm bg-white">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">Cash Flow Trend</h3>
-                  <p className="text-xs text-slate-400 mt-0.5">This Month</p>
+              <h3 className="text-lg font-bold text-slate-900 mb-4">Forecast & Recommendations</h3>
+              <div className="space-y-4">
+                <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
+                  <p className="text-sm font-semibold text-slate-900 mb-1">Expected Profit (By Month-end)</p>
+                  <p className="text-2xl font-bold text-blue-600">₹3.1L</p>
+                  <p className="text-xs text-slate-600 mt-1">If current growth trend continues</p>
                 </div>
-              </div>
-              <div style={{ width: '100%', height: 200 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart
-                    data={[
-                      { day: '1 May', cashIn: Math.round(revBase * 0.13), cashOut: Math.round(expBase * 0.16), net: Math.round(revBase * 0.13) - Math.round(expBase * 0.16) },
-                      { day: '7 May', cashIn: Math.round(revBase * 0.15), cashOut: Math.round(expBase * 0.14), net: Math.round(revBase * 0.15) - Math.round(expBase * 0.14) },
-                      { day: '13 May', cashIn: Math.round(revBase * 0.12), cashOut: Math.round(expBase * 0.15), net: Math.round(revBase * 0.12) - Math.round(expBase * 0.15) },
-                      { day: '19 May', cashIn: Math.round(revBase * 0.16), cashOut: Math.round(expBase * 0.13), net: Math.round(revBase * 0.16) - Math.round(expBase * 0.13) },
-                    ]}
-                    margin={{ left: -25, right: 10, top: 5, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                    <XAxis dataKey="day" stroke="#94a3b8" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <YAxis stroke="#94a3b8" tick={{ fontSize: 10 }} tickFormatter={(v) => `₹${(v / 100000).toFixed(0)}L`} width={35} axisLine={false} tickLine={false} />
-                    <Tooltip formatter={(value: number) => `₹${(value / 100000).toFixed(1)}L`} />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Line type="monotone" dataKey="cashIn"  stroke="#16A34A" strokeWidth={2} dot={false} name="Cash In" />
-                    <Line type="monotone" dataKey="cashOut" stroke="#DC2626" strokeWidth={2} dot={false} name="Cash Out" />
-                    <Line type="monotone" dataKey="net"     stroke="#2563EB" strokeWidth={2} dot={{ r: 3, fill: '#2563EB' }} name="Net" />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="mt-4 pt-4 border-t border-slate-100">
-                <p className="text-xs text-green-600 font-semibold">Cash increasing this month</p>
-              </div>
-            </Card>
-
-            {/* Profitability — area chart (NEW) */}
-            <Card className="p-6 border border-slate-200 rounded-2xl shadow-sm bg-white">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">Profitability</h3>
-                  <p className="text-xs text-slate-400 mt-0.5">This Month</p>
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-slate-900">Recommendations:</p>
+                  <ul className="text-xs text-slate-700 space-y-1">
+                    <li>✓ Continue cost control - you're trending well</li>
+                    <li>✓ Monitor salary budget - currently at 45% (target: 30-35%)</li>
+                    <li>💡 Increase marketing spend to capture growth opportunities</li>
+                  </ul>
                 </div>
-              </div>
-              <div style={{ width: '100%', height: 200 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart
-                    data={[
-                      { day: '1 May', profit: profitabilityMargin * 0.85 },
-                      { day: '7 May', profit: profitabilityMargin * 0.88 },
-                      { day: '13 May', profit: profitabilityMargin * 0.92 },
-                      { day: '19 May', profit: profitabilityMargin },
-                    ]}
-                    margin={{ left: -25, right: 10, top: 5, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                    <XAxis dataKey="day" stroke="#94a3b8" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <YAxis stroke="#94a3b8" tick={{ fontSize: 10 }} tickFormatter={(v) => `${v.toFixed(0)}%`} width={35} axisLine={false} tickLine={false} />
-                    <Tooltip formatter={(value: number) => `${value.toFixed(1)}%`} />
-                    <Area type="monotone" dataKey="profit" stroke="#7C3AED" fill="#7C3AED" fillOpacity={0.1} strokeWidth={2} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="mt-4 pt-4 border-t border-slate-100">
-                <p className="text-sm font-bold text-slate-900">{profitabilityMargin.toFixed(1)}%</p>
-                <p className="text-xs text-slate-500">Net Profit Margin</p>
-                <p className="text-xs text-green-600 font-semibold mt-1">↑ Profitability is improving</p>
               </div>
             </Card>
           </div>
