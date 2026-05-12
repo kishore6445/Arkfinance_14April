@@ -8,7 +8,7 @@ import {
   CheckCircle2, Eye, FileText, BarChart3, PieChart, ArrowRight, Zap, Clock, Landmark, Boxes,
   Users, RefreshCcw, Target
 } from 'lucide-react';
-import { LineChart, Line, BarChart, Bar, PieChart as RechartsPie, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart } from 'recharts';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { useAppState } from '@/context/app-state';
 import { calculateRunway, calculateHealthScore, calculateDSO } from '@/lib/calculations';
 import { getSupabaseClient } from '@/lib/supabase/client';
@@ -715,108 +715,140 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
         ══════════════════════════════════════════════════════════════════ */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-          {/* Invoice Status — pie chart - LARGER for accessibility */}
+          {/* ══ Money Waiting To Come In - Executive Priority Design ══ */}
           <Card className="p-8 border border-slate-200 rounded-2xl shadow-sm bg-white">
-            <div className="flex items-start justify-between mb-6">
+            <div className="flex items-center justify-between mb-8">
               <div>
-                <h2 className="text-2xl font-bold text-slate-900">Invoice Status</h2>
-                <p className="text-sm text-slate-400 mt-1">This Month</p>
+                <h2 className="text-2xl font-bold text-slate-900">Money Waiting To Come In</h2>
+                <p className="text-sm text-slate-400 mt-1">Invoice Status</p>
               </div>
+              {invoiceOverdue > 0 && (
+                <div className="px-4 py-2 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-xs font-bold text-red-600">⚠ NEEDS ATTENTION</p>
+                </div>
+              )}
             </div>
-            <div className="flex flex-col items-center gap-6">
-              <div style={{ width: '100%', height: 350 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <RechartsPie>
-                    <Pie
-                      data={[
-                        { name: 'Paid',    value: invoicePaid,    fill: '#16A34A' },
-                        { name: 'Pending', value: invoicePending, fill: '#2563EB' },
-                        { name: 'Overdue', value: invoiceOverdue, fill: '#DC2626' },
-                      ]}
-                      cx="50%" cy="50%"
-                      innerRadius={70} outerRadius={110}
-                      paddingAngle={3} dataKey="value" nameKey="name"
-                      labelLine={false}
-                      label={({ value }) => {
-                        const total = invoicePaid + invoicePending + invoiceOverdue;
-                        const pct = total > 0 ? Math.round((value / total) * 100) : 0;
-                        return `${pct}%`;
-                      }}
-                    >
-                      <Cell fill="#16A34A" />
-                      <Cell fill="#2563EB" />
-                      <Cell fill="#DC2626" />
-                    </Pie>
-                    <Tooltip formatter={(value) => `${value} invoices`} contentStyle={{ fontSize: 16, fontWeight: 'bold' }} />
-                  </RechartsPie>
-                </ResponsiveContainer>
+
+            {/* HERO: Overdue Amount (Biggest Priority) */}
+            <div className="mb-8 pb-8 border-b border-slate-200">
+              <p className="text-sm text-slate-500 mb-2 font-semibold uppercase">Money Stuck</p>
+              <p className="text-6xl font-extrabold text-red-600 mb-2">₹{(invoiceOverdue * 320000 / 100000).toFixed(0)}L</p>
+              <p className="text-lg text-slate-600">{invoiceOverdue} invoice{invoiceOverdue !== 1 ? 's' : ''} delayed</p>
+            </div>
+
+            {/* Collection Metrics */}
+            <div className="grid grid-cols-2 gap-6 mb-8">
+              <div>
+                <p className="text-sm text-slate-500 mb-2">Avg Collection Time</p>
+                <p className="text-3xl font-bold text-slate-900">21 <span className="text-lg font-semibold">days</span></p>
+                <p className="text-xs text-slate-500 mt-1">↓ 3 days vs last month</p>
               </div>
-              
-              <div className="space-y-2 text-center">
-                <p className="text-4xl font-extrabold text-slate-900">₹{((invoicePaid + invoicePending + invoiceOverdue) * 250000 / 100000).toFixed(0)}L</p>
-                <p className="text-lg text-slate-500">Total Invoice Value</p>
-                {invoiceOverdue > 0 && (
-                  <p className="text-base text-red-600 font-semibold">
-                    {invoiceOverdue} invoice{invoiceOverdue !== 1 ? 's' : ''} overdue worth ₹{(invoiceOverdue * 320000 / 100000).toFixed(0)}L
-                  </p>
-                )}
+              <div>
+                <p className="text-sm text-slate-500 mb-2">Largest Overdue Client</p>
+                <p className="text-2xl font-bold text-slate-900">ABC Industries</p>
+                <p className="text-lg text-red-600 font-semibold">₹8.2L</p>
               </div>
             </div>
 
-            <div className="mt-8 grid grid-cols-3 gap-4 text-center">
+            {/* Stacked Progress Bar (replaces donut) */}
+            <div className="mb-6">
+              <div className="flex rounded-lg overflow-hidden h-8 w-full gap-1">
+                <div className="bg-green-500" style={{ width: `${(invoicePaid / (invoicePaid + invoicePending + invoiceOverdue) * 100)}%` }} title={`Paid: ${invoicePaid}`} />
+                <div className="bg-yellow-400" style={{ width: `${(invoicePending / (invoicePaid + invoicePending + invoiceOverdue) * 100)}%` }} title={`Pending: ${invoicePending}`} />
+                <div className="bg-red-500" style={{ width: `${(invoiceOverdue / (invoicePaid + invoicePending + invoiceOverdue) * 100)}%` }} title={`Overdue: ${invoiceOverdue}`} />
+              </div>
+            </div>
+
+            {/* Invoice Breakdown */}
+            <div className="grid grid-cols-3 gap-4 mb-8 pb-8 border-b border-slate-200">
+              <div>
+                <p className="text-sm text-slate-600 mb-1">Paid</p>
+                <p className="text-2xl font-bold text-green-600">₹11L</p>
+                <p className="text-sm text-slate-500">{invoicePaid} invoice{invoicePaid !== 1 ? 's' : ''}</p>
+              </div>
+              <div>
+                <p className="text-sm text-slate-600 mb-1">Pending</p>
+                <p className="text-2xl font-bold text-yellow-600">₹8L</p>
+                <p className="text-sm text-slate-500">{invoicePending} invoice{invoicePending !== 1 ? 's' : ''}</p>
+              </div>
+              <div>
+                <p className="text-sm text-slate-600 mb-1">Overdue</p>
+                <p className="text-2xl font-bold text-red-600">₹26L</p>
+                <p className="text-sm text-slate-500">{invoiceOverdue} invoice{invoiceOverdue !== 1 ? 's' : ''}</p>
+              </div>
+            </div>
+
+            {/* Action Button */}
+            <Button className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg text-base">
+              Follow Up Now →
+            </Button>
+          </Card>
+
+          {/* ══ Where Your Money Is Going - Executive Insights ══ */}
+          <Card className="p-8 border border-slate-200 rounded-2xl shadow-sm bg-white">
+            <div className="flex items-center justify-between mb-8">
+              <div>
+                <h2 className="text-2xl font-bold text-slate-900">Where Your Money Is Going</h2>
+                <p className="text-sm text-slate-400 mt-1">Expense Breakdown - This Month</p>
+              </div>
+            </div>
+
+            {/* Horizontal Allocation Bars with Benchmarks */}
+            <div className="space-y-6">
               {[
-                { label: 'Paid',    count: invoicePaid,    color: 'bg-green-500' },
-                { label: 'Pending', count: invoicePending, color: 'bg-blue-500' },
-                { label: 'Overdue', count: invoiceOverdue, color: 'bg-red-500'   },
-              ].map(item => (
-                <div key={item.label}>
-                  <div className={`w-16 h-16 ${item.color} rounded-full flex items-center justify-center mx-auto mb-3`}>
-                    <span className="text-white font-bold text-2xl">{item.count}</span>
+                { name: 'Salaries', amount: '₹4,05,000', pct: 45, benchmark: '30-35%', status: 'above', trend: '+8%', color: 'bg-red-500' },
+                { name: 'Operations', amount: '₹2,25,000', pct: 25, benchmark: '20-25%', status: 'healthy', trend: '-3%', color: 'bg-yellow-500' },
+                { name: 'Infrastructure', amount: '₹1,35,000', pct: 15, benchmark: '12-15%', status: 'healthy', trend: '-2%', color: 'bg-blue-500' },
+                { name: 'Marketing', amount: '₹90,000', pct: 10, benchmark: '15-20%', status: 'below', trend: '+5%', color: 'bg-purple-500' },
+                { name: 'Other', amount: '₹45,000', pct: 5, benchmark: '<5%', status: 'healthy', trend: '0%', color: 'bg-slate-400' },
+              ].map((expense, idx) => (
+                <div key={idx}>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="font-semibold text-slate-900 text-base">{expense.name}</p>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-slate-600">{expense.amount}</span>
+                      <span className={`text-sm font-bold ${expense.status === 'above' ? 'text-red-600' : expense.status === 'below' ? 'text-blue-600' : 'text-green-600'}`}>
+                        {expense.status === 'above' ? '↑' : expense.status === 'below' ? '↓' : '✓'} {expense.trend}
+                      </span>
+                    </div>
                   </div>
-                  <p className="text-lg text-slate-600 font-semibold">{item.label}</p>
+                  <div className="flex gap-3 items-center">
+                    <div className="flex-1">
+                      <div className="w-full bg-slate-100 rounded-lg h-6 overflow-hidden">
+                        <div className={`${expense.color} h-full flex items-center justify-end pr-2`} style={{ width: `${expense.pct}%` }}>
+                          <span className="text-white font-bold text-sm">{expense.pct}%</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-slate-600">Target: {expense.benchmark}</p>
+                      <p className={`text-xs font-semibold ${expense.status === 'above' ? 'text-red-600' : expense.status === 'below' ? 'text-blue-600' : 'text-green-600'}`}>
+                        {expense.status === 'above' ? '⚠ Above' : expense.status === 'below' ? 'Below' : '✓ Healthy'}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
-          </Card>
 
-          {/* Expense Breakdown — donut + insight - LARGER for accessibility */}
-          <Card className="p-8 border border-slate-200 rounded-2xl shadow-sm bg-white">
-            <h2 className="text-2xl font-bold text-slate-900 mb-2">Expense Breakdown</h2>
-            <p className="text-sm text-slate-400 mb-6">Where your money is going</p>
-            <div style={{ width: '100%', height: 350 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <RechartsPie>
-                  <Pie
-                    data={expenseCategoryData}
-                    cx="50%" cy="50%"
-                    innerRadius={70} outerRadius={110}
-                    paddingAngle={3} dataKey="value" nameKey="name"
-                    labelLine={false}
-                    label={({ cx, cy, midAngle, innerRadius, outerRadius, value }) => {
-                      const RADIAN = Math.PI / 180;
-                      const radius = (innerRadius as number) + ((outerRadius as number) - (innerRadius as number)) * 0.5;
-                      const x = (cx as number) + radius * Math.cos(-midAngle * RADIAN);
-                      const y = (cy as number) + radius * Math.sin(-midAngle * RADIAN);
-                      if ((value as number) < 10) return null;
-                      return (
-                        <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={16} fontWeight="700">
-                          {`${value}%`}
-                        </text>
-                      );
-                    }}
-                  >
-                    {expenseCategoryData.map((entry, idx) => (
-                      <Cell key={`exp-cell-${idx}`} fill={entry.fill} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(value) => `${value}%`} contentStyle={{ fontSize: 16, fontWeight: 'bold' }} />
-                  <Legend wrapperStyle={{ fontSize: 14, fontWeight: 600 }} />
-                </RechartsPie>
-              </ResponsiveContainer>
+            {/* Financial Risk Signals */}
+            <div className="mt-8 pt-8 border-t border-slate-200 space-y-3">
+              <p className="font-bold text-slate-900 text-base">Financial Risk Signals</p>
+              <div className="space-y-2">
+                <div className="flex items-start gap-2 text-sm">
+                  <span className="text-red-600 font-bold">🔴</span>
+                  <span className="text-slate-700">Salaries are consuming 45% of expenses. Recommended range is 30–35%.</span>
+                </div>
+                <div className="flex items-start gap-2 text-sm">
+                  <span className="text-green-600 font-bold">🟢</span>
+                  <span className="text-slate-700">Operating costs stable this month. Good job keeping expenses in check.</span>
+                </div>
+                <div className="flex items-start gap-2 text-sm">
+                  <span className="text-amber-600 font-bold">🟡</span>
+                  <span className="text-slate-700">Marketing spend below target. Consider increasing to capture growth.</span>
+                </div>
+              </div>
             </div>
-            <p className="text-base text-slate-600 mt-6 bg-slate-50 rounded-lg px-4 py-3 border-2 border-slate-200">
-              Salaries contribute <span className="font-bold text-slate-900 text-lg">45%</span> of total expenses this month
-            </p>
           </Card>
         </div>
 
