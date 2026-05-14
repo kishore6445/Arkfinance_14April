@@ -287,22 +287,124 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
   };
 
   // ── derived values used by charts ────────────────────────────────────────
-  const invoicePaid    = state.invoices.filter(i => i.status === 'Paid').length  || 18;
-  const invoicePending = state.invoices.filter(i => i.status === 'Pending' || i.status === 'Sent').length || 9;
-  const invoiceOverdue = overdueInvoices || 3;
+  const invoicePaid    = state.invoices.filter(i => i.status === 'Paid').length;
+  const invoicePending = state.invoices.filter(i => i.status === 'Pending' || i.status === 'Unpaid').length;
 
-  const revBase = monthlyRevenue > 0 ? monthlyRevenue : 850000;
-  const expBase = monthlyBurn    > 0 ? monthlyBurn    : 620000;
+  // Overdue amount: sum balanceDue from real overdue invoices
+  const overdueInvoiceList = state.invoices.filter(inv => {
+    const dueDate = new Date(inv.dueDate);
+    return inv.balanceDue > 0 && (inv.status === 'Overdue' || dueDate < todayDate);
+  });
+  const overdueAmount = overdueInvoiceList.reduce((sum, inv) => sum + inv.balanceDue, 0);
 
-  const cashBase = cashBalance > 0 ? cashBalance : 1452386;
+  // Largest overdue client: real invoice sorted by balanceDue desc
+  const largestOverdueInvoice = overdueInvoiceList.sort((a, b) => b.balanceDue - a.balanceDue)[0];
+  const largestOverdueClient = largestOverdueInvoice ? largestOverdueInvoice.partyName : null;
+  const largestOverdueAmount = largestOverdueInvoice ? largestOverdueInvoice.balanceDue : 0;
 
-  const expenseCategoryData = [
-    { name: 'Salaries',        value: 45, fill: '#DC2626' },
-    { name: 'Operations',      value: 25, fill: '#F59E0B' },
-    { name: 'Infrastructure',  value: 15, fill: '#2563EB' },
-    { name: 'Marketing',       value: 10, fill: '#8b5cf6' },
-    { name: 'Other',           value:  5, fill: '#64748b' },
+  // Paid / Pending invoice amounts: sum balanceDue or invoiceAmount
+  const paidInvoiceAmount = state.invoices
+    .filter(i => i.status === 'Paid')
+    .reduce((sum, i) => sum + i.invoiceAmount, 0);
+  const pendingInvoiceAmount = state.invoices
+    .filter(i => i.status === 'Pending' || i.status === 'Unpaid')
+    .reduce((sum, i) => sum + i.balanceDue, 0);
+
+  const revBase = monthlyRevenue > 0 ? monthlyRevenue : 0;
+  const expBase = monthlyBurn    > 0 ? monthlyBurn    : 0;
+
+  // Expense category breakdown from real transactions by subtype
+  const EXPENSE_SUBTYPES: { name: string; keys: string[]; fill: string; benchmark: string }[] = [
+    { name: 'Salaries',       keys: ['Salary', 'Salaries', 'Payroll'],         fill: '#DC2626', benchmark: '30-35%' },
+    { name: 'Operations',     keys: ['Operations', 'Operational', 'General'],  fill: '#F59E0B', benchmark: '20-25%' },
+    { name: 'Infrastructure', keys: ['Infrastructure', 'IT', 'Tech', 'Rent'],  fill: '#2563EB', benchmark: '12-15%' },
+    { name: 'Marketing',      keys: ['Marketing', 'Advertising', 'Promotion'], fill: '#8b5cf6', benchmark: '15-20%' },
+    { name: 'Other',          keys: [],                                          fill: '#64748b', benchmark: '<5%'    },
   ];
+  const categorisedSubtypes = new Set(EXPENSE_SUBTYPES.flatMap(c => c.keys));
+  const expenseByCategory = EXPENSE_SUBTYPES.map(cat => {
+    const catAmount = currentMonthTransactions
+      .filter(t => !t.isIncome && (
+        cat.keys.length === 0
+          ? !categorisedSubtypes.has(t.subtype)
+          : cat.keys.some(k => t.subtype?.toLowerCase().includes(k.toLowerCase()))
+      ))
+      .reduce((sum, t) => sum + t.amount, 0);
+    return { ...cat, amount: catAmount };
+  });
+  const totalExpenseForCategory = expenseByCategory.reduce((sum, c) => sum + c.amount, 0);
+  const expenseCategoryData = expenseByCategory.map(cat => ({
+    name: cat.name,
+    value: totalExpenseForCategory > 0 ? Math.round((cat.amount / totalExpenseForCategory) * 100) : 0,
+    amount: cat.amount,
+    fill: cat.fill,
+    benchmark: cat.benchmark,
+  }));
+
+  // Weekly timeline chart data — real weekly buckets from current month transactions
+  const weeklyChartData = (() => {
+    const monthStart = new Date(todayDate);
+    monthStart.setDate(1);
+    return [0, 7, 14, 21].map(offset => {
+      const start = new Date(monthStart);
+      start.setDate(monthStart.getDate() + offset);
+      const end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      const startKey = start.toISOString().split('T')[0];
+      const endKey   = end.toISOString().split('T')[0];
+      const weekTx   = currentMonthTransactions.filter(t => (t.date ?? '') >= startKey && (t.date ?? '') <= endKey);
+      const rev  = weekTx.filter(t => t.isIncome).reduce((s, t) => s + t.amount, 0);
+      const exp  = weekTx.filter(t => !t.isIncome).reduce((s, t) => s + t.amount, 0);
+      return {
+        period: start.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+        revenue: rev,
+        expenses: exp,
+        profit: rev - exp,
+      };
+    });
+  })();
+
+  // Cash Allocation from real bank account mappings
+  const BUCKET_LABELS: Record<string, string> = {
+    gst: 'GST Reserve', operating: 'Operating Account', reserve: 'Profit Reserve',
+    capex: 'CapEx', salary: 'Salary Reserve',
+  };
+  const BUCKET_COLORS: Record<string, string> = {
+    gst: 'bg-blue-500', operating: 'bg-green-500', reserve: 'bg-purple-400',
+    capex: 'bg-amber-400', salary: 'bg-amber-400',
+  };
+  const allocationBuckets = (() => {
+    if (state.bankAccountMappings.length > 0) {
+      const grouped: Record<string, number> = {};
+      state.bankAccountMappings.forEach(m => {
+        const key = m.bucketId.toLowerCase();
+        grouped[key] = (grouped[key] ?? 0) + Number(m.allocationPercentage ?? 0);
+      });
+      return Object.entries(grouped).map(([key, pct]) => {
+        const matchedAccounts = effectiveBankAccounts.filter(acc =>
+          state.bankAccountMappings.some(m => m.bucketId.toLowerCase() === key && m.id)
+        );
+        const bucketBalance = cashBalance > 0 ? (pct / 100) * cashBalance : 0;
+        return {
+          name: BUCKET_LABELS[key] ?? key,
+          pct: Math.round(pct),
+          amount: bucketBalance,
+          color: BUCKET_COLORS[key] ?? 'bg-slate-400',
+        };
+      }).filter(b => b.pct > 0);
+    }
+    // No mappings: fallback — show all bank accounts as equal slices
+    if (effectiveBankAccounts.length > 0) {
+      const total = cashBalance || 1;
+      return effectiveBankAccounts.slice(0, 4).map((acc, i) => ({
+        name: acc.accountName,
+        pct: Math.round((acc.balance / total) * 100),
+        amount: acc.balance,
+        color: ['bg-green-500', 'bg-blue-500', 'bg-amber-400', 'bg-purple-400'][i] ?? 'bg-slate-400',
+      }));
+    }
+    return [] as { name: string; pct: number; amount: number; color: string }[];
+  })();
 
   const cashDistData = (() => {
     const accounts = effectiveBankAccounts.slice(0, 4);
@@ -377,11 +479,57 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
   // Collections slowdown (DSO trend)
   const dsoTrendUp = dso > 45;
 
-  // Marketing ROI (simple: revenue vs known marketing spend)
+  // Last month key for MoM comparisons
+  const lastMonthDate = new Date(todayDate);
+  lastMonthDate.setMonth(lastMonthDate.getMonth() - 1);
+  const lastMonthKey = lastMonthDate.toISOString().slice(0, 7);
+  const lastMonthTransactions = effectiveTransactions.filter(
+    (t) => (t.date ?? '').startsWith(lastMonthKey) && isPostedCashTransaction(t)
+  );
+  const lastMonthRevenue = lastMonthTransactions.filter(t => t.isIncome).reduce((sum, t) => sum + t.amount, 0);
+  const lastMonthBurn    = lastMonthTransactions.filter(t => !t.isIncome).reduce((sum, t) => sum + t.amount, 0);
+  const lastMonthProfit  = lastMonthRevenue - lastMonthBurn;
+  const thisMonthProfit  = revBase - expBase;
+  const lastMonthMargin  = lastMonthRevenue > 0 ? ((lastMonthRevenue - lastMonthBurn) / lastMonthRevenue) * 100 : 0;
+
+  const revMoMPct  = lastMonthRevenue > 0 ? Math.round(((revBase - lastMonthRevenue) / lastMonthRevenue) * 100) : 0;
+  const expMoMPct  = lastMonthBurn    > 0 ? Math.round(((expBase  - lastMonthBurn)   / lastMonthBurn)    * 100) : 0;
+  const profMoMPct = lastMonthProfit  !== 0 ? Math.round(((thisMonthProfit - lastMonthProfit) / Math.abs(lastMonthProfit)) * 100) : 0;
+  const marginMoMPct = Math.round(profitabilityMargin - lastMonthMargin);
+
+  // Marketing spend from real transactions
   const marketingSpendEstimate = currentMonthTransactions
-    .filter(t => !t.isIncome && t.subtype === 'Marketing')
+    .filter(t => !t.isIncome && ['Marketing', 'Advertising', 'Promotion'].some(k => t.subtype?.toLowerCase().includes(k.toLowerCase())))
     .reduce((sum, t) => sum + t.amount, 0);
-  const marketingRoiImprovement = 18; // placeholder, ideally calculated from YoY
+  const lastMonthMarketingSpend = lastMonthTransactions
+    .filter(t => !t.isIncome && ['Marketing', 'Advertising', 'Promotion'].some(k => t.subtype?.toLowerCase().includes(k.toLowerCase())))
+    .reduce((sum, t) => sum + t.amount, 0);
+  const marketingRoiImprovement = lastMonthMarketingSpend > 0
+    ? Math.round(((marketingSpendEstimate - lastMonthMarketingSpend) / lastMonthMarketingSpend) * 100)
+    : 0;
+
+  // Marketing budget usage (as % of total expenses this month)
+  const marketingBudgetPct = expBase > 0 ? Math.round((marketingSpendEstimate / expBase) * 100) : 0;
+
+  // Best week calculation from real transaction data
+  const weeklyProfits: { label: string; profit: number }[] = [];
+  for (let w = 0; w < 4; w++) {
+    const start = new Date(todayDate);
+    start.setDate(1);
+    start.setDate(start.getDate() + w * 7);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    const startKey = start.toISOString().split('T')[0];
+    const endKey   = end.toISOString().split('T')[0];
+    const weekTx   = currentMonthTransactions.filter(t => (t.date ?? '') >= startKey && (t.date ?? '') <= endKey);
+    const weekRev  = weekTx.filter(t => t.isIncome).reduce((s, t) => s + t.amount, 0);
+    const weekExp  = weekTx.filter(t => !t.isIncome).reduce((s, t) => s + t.amount, 0);
+    weeklyProfits.push({
+      label: `${start.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}–${end.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`,
+      profit: weekRev - weekExp,
+    });
+  }
+  const bestWeek = weeklyProfits.reduce((best, w) => w.profit > best.profit ? w : best, weeklyProfits[0] ?? { label: '—', profit: 0 });
 
   const ceoInsights = [
     {
@@ -565,7 +713,9 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
                 <div className="p-2 bg-green-50 rounded-lg"><TrendingUp className="w-4 h-4 text-green-600" /></div>
               </div>
               <p className="text-3xl font-extrabold text-slate-900">₹{(revBase / 100000).toFixed(1)}L</p>
-              <p className="text-sm text-green-600 font-bold mt-1">↑ 18% vs last month</p>
+              <p className={`text-sm font-bold mt-1 ${revMoMPct >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {revMoMPct >= 0 ? '↑' : '↓'} {Math.abs(revMoMPct)}% vs last month
+              </p>
             </Card>
 
             <Card className="p-6 border border-slate-200 rounded-2xl shadow-sm bg-white">
@@ -574,7 +724,9 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
                 <div className="p-2 bg-red-50 rounded-lg"><TrendingDown className="w-4 h-4 text-red-600" /></div>
               </div>
               <p className="text-3xl font-extrabold text-slate-900">₹{(expBase / 100000).toFixed(1)}L</p>
-              <p className="text-sm text-red-600 font-bold mt-1">↑ 4% vs last month</p>
+              <p className={`text-sm font-bold mt-1 ${expMoMPct <= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {expMoMPct >= 0 ? '↑' : '↓'} {Math.abs(expMoMPct)}% vs last month
+              </p>
             </Card>
 
             <Card className="p-6 border border-green-200 rounded-2xl shadow-sm bg-gradient-to-br from-green-50 to-white">
@@ -582,8 +734,10 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
                 <p className="text-sm text-slate-500 font-semibold">Profit</p>
                 <div className="p-2 bg-green-100 rounded-lg"><DollarSign className="w-4 h-4 text-green-700" /></div>
               </div>
-              <p className="text-3xl font-extrabold text-green-700">₹{((revBase - expBase) / 100000).toFixed(1)}L</p>
-              <p className="text-sm text-green-600 font-bold mt-1">↑ 67% vs last month</p>
+              <p className="text-3xl font-extrabold text-green-700">₹{(thisMonthProfit / 100000).toFixed(1)}L</p>
+              <p className={`text-sm font-bold mt-1 ${profMoMPct >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {profMoMPct >= 0 ? '↑' : '↓'} {Math.abs(profMoMPct)}% vs last month
+              </p>
             </Card>
 
             <Card className="p-6 border border-slate-200 rounded-2xl shadow-sm bg-white">
@@ -592,7 +746,9 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
                 <div className="p-2 bg-blue-50 rounded-lg"><BarChart3 className="w-4 h-4 text-blue-600" /></div>
               </div>
               <p className="text-3xl font-extrabold text-slate-900">{profitabilityMargin.toFixed(1)}%</p>
-              <p className="text-sm text-blue-600 font-bold mt-1">↑ 9% vs last month</p>
+              <p className={`text-sm font-bold mt-1 ${marginMoMPct >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                {marginMoMPct >= 0 ? '↑' : '↓'} {Math.abs(marginMoMPct)}% vs last month
+              </p>
             </Card>
 
             <Card className="p-6 border border-slate-200 rounded-2xl shadow-sm bg-white">
@@ -600,8 +756,8 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
                 <p className="text-sm text-slate-500 font-semibold">Best Week</p>
                 <div className="p-2 bg-purple-50 rounded-lg"><Calendar className="w-4 h-4 text-purple-600" /></div>
               </div>
-              <p className="text-2xl font-extrabold text-slate-900">13–19 May</p>
-              <p className="text-xs text-slate-600 mt-1">Highest profit: ₹3.1L</p>
+              <p className="text-xl font-extrabold text-slate-900">{bestWeek.label}</p>
+              <p className="text-xs text-slate-600 mt-1">Highest profit: ₹{(bestWeek.profit / 100000).toFixed(1)}L</p>
             </Card>
           </div>
 
@@ -628,12 +784,7 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
             <div style={{ width: '100%', height: 350 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
-                  data={[
-                    { period: '1 May', revenue: Math.round(revBase * 0.22), expenses: Math.round(expBase * 0.28), profit: Math.round((revBase * 0.22) - (expBase * 0.28)), note: 'Month start' },
-                    { period: '8 May', revenue: Math.round(revBase * 0.25), expenses: Math.round(expBase * 0.23), profit: Math.round((revBase * 0.25) - (expBase * 0.23)), note: 'Big client payment' },
-                    { period: '13 May', revenue: Math.round(revBase * 0.28), expenses: Math.round(expBase * 0.25), profit: Math.round((revBase * 0.28) - (expBase * 0.25)), note: 'Marketing expenses ↑' },
-                    { period: '19 May', revenue: Math.round(revBase * 0.25), expenses: Math.round(expBase * 0.24), profit: Math.round((revBase * 0.25) - (expBase * 0.24)), note: 'Collections improved' },
-                  ]}
+                  data={weeklyChartData}
                   margin={{ left: -20, right: 10, top: 30, bottom: 60 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
@@ -664,33 +815,30 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
               </ResponsiveContainer>
             </div>
 
-            {/* Business Events & Insights on Timeline */}
-            <div className="mt-8 pt-6 border-t border-slate-200 space-y-4">
-              <p className="text-sm font-semibold text-slate-900">Key Events This Month</p>
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div className="flex gap-3 p-4 bg-green-50 rounded-lg border border-green-100">
-                  <div className="text-lg">📌</div>
-                  <div>
-                    <p className="font-semibold text-slate-900 text-sm">8 May: Big Client Payment</p>
-                    <p className="text-xs text-slate-600 mt-1">Revenue spike helped boost monthly growth</p>
-                  </div>
-                </div>
-                <div className="flex gap-3 p-4 bg-red-50 rounded-lg border border-red-100">
-                  <div className="text-lg">🚨</div>
-                  <div>
-                    <p className="font-semibold text-slate-900 text-sm">13 May: Marketing Expenses</p>
-                    <p className="text-xs text-slate-600 mt-1">Campaign spending increased by ₹2.5L</p>
-                  </div>
-                </div>
-                <div className="flex gap-3 p-4 bg-blue-50 rounded-lg border border-blue-100">
-                  <div className="text-lg">💰</div>
-                  <div>
-                    <p className="font-semibold text-slate-900 text-sm">19 May: Collections Strong</p>
-                    <p className="text-xs text-slate-600 mt-1">Receivables converted, cash position improved</p>
-                  </div>
+            {/* Business Events — top 3 transactions by amount this month */}
+            {recentTransactions.length > 0 && (
+              <div className="mt-8 pt-6 border-t border-slate-200 space-y-4">
+                <p className="text-sm font-semibold text-slate-900">Key Events This Month</p>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  {currentMonthTransactions
+                    .sort((a, b) => b.amount - a.amount)
+                    .slice(0, 3)
+                    .map((tx, idx) => (
+                      <div key={idx} className={`flex gap-3 p-4 rounded-lg border ${tx.isIncome ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>
+                        <div className="text-lg">{tx.isIncome ? '+' : '-'}</div>
+                        <div>
+                          <p className="font-semibold text-slate-900 text-sm">
+                            {tx.date ? new Date(tx.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—'}: {tx.subtype || 'Transaction'}
+                          </p>
+                          <p className="text-xs text-slate-600 mt-1">
+                            ₹{(tx.amount / 100000).toFixed(2)}L {tx.isIncome ? 'received' : 'spent'}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
                 </div>
               </div>
-            </div>
+            )}
           </Card>
         </div>
 
@@ -707,11 +855,17 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
                 <div className="p-3 bg-red-50 rounded-lg">
                   <FileText className="w-5 h-5 text-red-600" />
                 </div>
-                <span className="text-2xl font-bold text-red-600">{invoiceOverdue}</span>
+                <span className="text-2xl font-bold text-red-600">{overdueInvoices}</span>
               </div>
               <p className="text-sm font-semibold text-slate-900">Overdue Invoices</p>
-              <p className="text-lg font-bold text-red-600 mt-2">₹{(invoiceOverdue * 320000 / 100000).toFixed(0)}L stuck</p>
-              <p className="text-xs text-slate-600 mt-1">Largest: ABC Industries (₹8.2L)</p>
+              <p className="text-lg font-bold text-red-600 mt-2">
+                ₹{(overdueAmount / 100000).toFixed(1)}L stuck
+              </p>
+              {largestOverdueClient && (
+                <p className="text-xs text-slate-600 mt-1">
+                  Largest: {largestOverdueClient} (₹{(largestOverdueAmount / 100000).toFixed(1)}L)
+                </p>
+              )}
               <Button className="w-full mt-4 bg-red-600 hover:bg-red-700 text-white font-semibold py-2 rounded-lg text-sm">
                 Follow Up Now
               </Button>
@@ -723,12 +877,14 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
                 <div className="p-3 bg-yellow-50 rounded-lg">
                   <AlertTriangle className="w-5 h-5 text-yellow-600" />
                 </div>
-                <span className="text-2xl font-bold text-yellow-600">2</span>
+                <span className="text-2xl font-bold text-yellow-600">{pendingCompliance.length}</span>
               </div>
               <p className="text-sm font-semibold text-slate-900">Compliance Alerts</p>
               <div className="mt-2 space-y-1 text-xs text-slate-600">
-                <p>GST filing due: 5 Jun</p>
-                <p>Tax audit: Scheduled 12 Jun</p>
+                {pendingCompliance.slice(0, 2).map(c => (
+                  <p key={c.id}>{c.name}{c.dueDate ? `: due ${new Date(c.dueDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : ''}</p>
+                ))}
+                {pendingCompliance.length === 0 && <p>All compliance items up to date</p>}
               </div>
               <Button className="w-full mt-4 bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 rounded-lg text-sm">
                 View Calendar
@@ -741,12 +897,15 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
                 <div className="p-3 bg-blue-50 rounded-lg">
                   <CheckCircle2 className="w-5 h-5 text-blue-600" />
                 </div>
-                <span className="text-2xl font-bold text-blue-600">3</span>
+                <span className="text-2xl font-bold text-blue-600">{pendingApprovalCount}</span>
               </div>
               <p className="text-sm font-semibold text-slate-900">Pending Approvals</p>
               <div className="mt-2 space-y-1 text-xs text-slate-600">
-                <p>Payment requests: ₹45L</p>
-                <p>Budget increase: HR team</p>
+                <p>Payment requests: ₹{(pendingApprovalAmount / 100000).toFixed(1)}L</p>
+                {pendingApprovals.slice(0, 1).map(a => (
+                  <p key={a.id}>{a.description}</p>
+                ))}
+                {pendingApprovalCount === 0 && <p>No pending approvals</p>}
               </div>
               <Button className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg text-sm">
                 Review Queue
@@ -765,8 +924,40 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
             </div>
             <div className="flex-1">
               <p className="text-sm font-semibold text-blue-700 uppercase tracking-widest mb-1">AI Insight</p>
-              <p className="text-lg font-bold text-slate-900 mb-2">Your salary costs are trending 45% vs target 30-35%. At current burn rate, you have 2.4 months runway.</p>
-              <p className="text-slate-600 text-sm">Recommendation: Optimize headcount or increase revenue. Modeling shows ₹8L salary reduction would extend runway to 3.2 months.</p>
+              {(() => {
+                const salaryCat = expenseCategoryData.find(c => c.name === 'Salaries');
+                const salaryPct = salaryCat?.value ?? 0;
+                if (salaryPct > 35) {
+                  return (
+                    <>
+                      <p className="text-lg font-bold text-slate-900 mb-2">Your salary costs are at {salaryPct}% of expenses (target: 30–35%). At current burn rate, you have {runway.toFixed(1)} months runway.</p>
+                      <p className="text-slate-600 text-sm">Recommendation: Optimize headcount or grow revenue to bring salary ratio into target range.</p>
+                    </>
+                  );
+                }
+                if (runway < 3) {
+                  return (
+                    <>
+                      <p className="text-lg font-bold text-slate-900 mb-2">Runway is critically low at {runway.toFixed(1)} months. Immediate action needed to extend cash reserves.</p>
+                      <p className="text-slate-600 text-sm">Recommendation: Accelerate collections on ₹{(overdueAmount / 100000).toFixed(1)}L overdue invoices and defer non-essential spend.</p>
+                    </>
+                  );
+                }
+                if (overdueAmount > 0) {
+                  return (
+                    <>
+                      <p className="text-lg font-bold text-slate-900 mb-2">₹{(overdueAmount / 100000).toFixed(1)}L is stuck in {overdueInvoices} overdue invoice{overdueInvoices !== 1 ? 's' : ''}. Collecting these would extend your runway significantly.</p>
+                      <p className="text-slate-600 text-sm">Recommendation: Prioritise follow-ups starting with the largest client.</p>
+                    </>
+                  );
+                }
+                return (
+                  <>
+                    <p className="text-lg font-bold text-slate-900 mb-2">Business is performing well with {runway.toFixed(1)} months runway and a {profitabilityMargin.toFixed(1)}% net margin this month.</p>
+                    <p className="text-slate-600 text-sm">Consider increasing marketing spend to accelerate growth while cash position is strong.</p>
+                  </>
+                );
+              })()}
               <Button variant="link" className="mt-3 text-blue-600 hover:text-blue-700 font-semibold p-0">
                 Run Scenario Analysis →
               </Button>
@@ -776,7 +967,7 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
 
         {/* ══════════════════════════════════════════════════════════════════
             SECTION 4 — BREAKDOWN: Invoice Status (donut) & others
-        ══════════════════════════════════════════════════════════════════ */}
+        ═══════════════════════════════════════════��══════════════════════ */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
           {/* ══ Money Waiting To Come In - Executive Priority Design ══ */}
@@ -796,7 +987,7 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
                   <option value="last-year">Last 12 Months</option>
                   <option value="custom">Custom Range</option>
                 </select>
-                {invoiceOverdue > 0 && (
+                {overdueInvoices > 0 && (
                   <div className="px-4 py-2 bg-red-50 border border-red-200 rounded-lg">
                     <p className="text-xs font-bold text-red-600">NEEDS ATTENTION</p>
                   </div>
@@ -807,30 +998,36 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
             {/* HERO: Overdue Amount (Biggest Priority) */}
             <div className="mb-8 pb-8 border-b border-slate-200">
               <p className="text-sm text-slate-500 mb-2 font-semibold uppercase">Money Stuck</p>
-              <p className="text-6xl font-extrabold text-red-600 mb-2">₹{(invoiceOverdue * 320000 / 100000).toFixed(0)}L</p>
-              <p className="text-lg text-slate-600">{invoiceOverdue} invoice{invoiceOverdue !== 1 ? 's' : ''} delayed</p>
+              <p className="text-6xl font-extrabold text-red-600 mb-2">₹{(overdueAmount / 100000).toFixed(1)}L</p>
+              <p className="text-lg text-slate-600">{overdueInvoices} invoice{overdueInvoices !== 1 ? 's' : ''} delayed</p>
             </div>
 
             {/* Collection Metrics */}
             <div className="grid grid-cols-2 gap-6 mb-8">
               <div>
-                <p className="text-sm text-slate-500 mb-2">Avg Collection Time</p>
-                <p className="text-3xl font-bold text-slate-900">21 <span className="text-lg font-semibold">days</span></p>
-                <p className="text-xs text-slate-500 mt-1">↓ 3 days vs last month</p>
+                <p className="text-sm text-slate-500 mb-2">Avg Collection Time (DSO)</p>
+                <p className="text-3xl font-bold text-slate-900">{Math.round(dso)} <span className="text-lg font-semibold">days</span></p>
+                <p className="text-xs text-slate-500 mt-1">{dso <= 45 ? 'Within healthy range' : 'Above 45-day benchmark'}</p>
               </div>
               <div>
                 <p className="text-sm text-slate-500 mb-2">Largest Overdue Client</p>
-                <p className="text-2xl font-bold text-slate-900">ABC Industries</p>
-                <p className="text-lg text-red-600 font-semibold">₹8.2L</p>
+                {largestOverdueClient ? (
+                  <>
+                    <p className="text-2xl font-bold text-slate-900">{largestOverdueClient}</p>
+                    <p className="text-lg text-red-600 font-semibold">₹{(largestOverdueAmount / 100000).toFixed(1)}L</p>
+                  </>
+                ) : (
+                  <p className="text-lg text-green-600 font-semibold">No overdue clients</p>
+                )}
               </div>
             </div>
 
             {/* Stacked Progress Bar (replaces donut) */}
             <div className="mb-6">
               <div className="flex rounded-lg overflow-hidden h-8 w-full gap-1">
-                <div className="bg-green-500" style={{ width: `${(invoicePaid / (invoicePaid + invoicePending + invoiceOverdue) * 100)}%` }} title={`Paid: ${invoicePaid}`} />
-                <div className="bg-yellow-400" style={{ width: `${(invoicePending / (invoicePaid + invoicePending + invoiceOverdue) * 100)}%` }} title={`Pending: ${invoicePending}`} />
-                <div className="bg-red-500" style={{ width: `${(invoiceOverdue / (invoicePaid + invoicePending + invoiceOverdue) * 100)}%` }} title={`Overdue: ${invoiceOverdue}`} />
+                <div className="bg-green-500" style={{ width: `${(invoicePaid / (invoicePaid + invoicePending + overdueInvoices) * 100)}%` }} title={`Paid: ${invoicePaid}`} />
+                <div className="bg-yellow-400" style={{ width: `${(invoicePending / (invoicePaid + invoicePending + overdueInvoices) * 100)}%` }} title={`Pending: ${invoicePending}`} />
+                <div className="bg-red-500" style={{ width: `${(overdueInvoices / (invoicePaid + invoicePending + overdueInvoices) * 100)}%` }} title={`Overdue: ${overdueInvoices}`} />
               </div>
             </div>
 
@@ -838,18 +1035,18 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
             <div className="grid grid-cols-3 gap-4 mb-8 pb-8 border-b border-slate-200">
               <div>
                 <p className="text-sm text-slate-600 mb-1">Paid</p>
-                <p className="text-2xl font-bold text-green-600">₹11L</p>
+                <p className="text-2xl font-bold text-green-600">₹{(paidInvoiceAmount / 100000).toFixed(1)}L</p>
                 <p className="text-sm text-slate-500">{invoicePaid} invoice{invoicePaid !== 1 ? 's' : ''}</p>
               </div>
               <div>
                 <p className="text-sm text-slate-600 mb-1">Pending</p>
-                <p className="text-2xl font-bold text-yellow-600">₹8L</p>
+                <p className="text-2xl font-bold text-yellow-600">₹{(pendingInvoiceAmount / 100000).toFixed(1)}L</p>
                 <p className="text-sm text-slate-500">{invoicePending} invoice{invoicePending !== 1 ? 's' : ''}</p>
               </div>
               <div>
                 <p className="text-sm text-slate-600 mb-1">Overdue</p>
-                <p className="text-2xl font-bold text-red-600">₹26L</p>
-                <p className="text-sm text-slate-500">{invoiceOverdue} invoice{invoiceOverdue !== 1 ? 's' : ''}</p>
+                <p className="text-2xl font-bold text-red-600">₹{(overdueAmount / 100000).toFixed(1)}L</p>
+                <p className="text-sm text-slate-500">{overdueInvoices} invoice{overdueInvoices !== 1 ? 's' : ''}</p>
               </div>
             </div>
 
@@ -879,58 +1076,78 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
 
             {/* Horizontal Allocation Bars with Benchmarks */}
             <div className="space-y-6">
-              {[
-                { name: 'Salaries', amount: '₹4,05,000', pct: 45, benchmark: '30-35%', status: 'above', trend: '+8%', color: 'bg-red-500' },
-                { name: 'Operations', amount: '₹2,25,000', pct: 25, benchmark: '20-25%', status: 'healthy', trend: '-3%', color: 'bg-yellow-500' },
-                { name: 'Infrastructure', amount: '₹1,35,000', pct: 15, benchmark: '12-15%', status: 'healthy', trend: '-2%', color: 'bg-blue-500' },
-                { name: 'Marketing', amount: '₹90,000', pct: 10, benchmark: '15-20%', status: 'below', trend: '+5%', color: 'bg-purple-500' },
-                { name: 'Other', amount: '₹45,000', pct: 5, benchmark: '<5%', status: 'healthy', trend: '0%', color: 'bg-slate-400' },
-              ].map((expense, idx) => (
+              {expenseCategoryData.filter(c => c.value > 0 || c.amount > 0).map((expense, idx) => {
+                // Determine status vs benchmark
+                const benchmarkMax = parseFloat(expense.benchmark.replace(/[^0-9.]/g, '').split('-')[1] ?? expense.benchmark.replace(/[^0-9.]/g, ''));
+                const benchmarkMin = parseFloat(expense.benchmark.replace(/[^0-9.]/g, '').split('-')[0]);
+                const status = expense.value > benchmarkMax ? 'above' : expense.value < (benchmarkMin || 0) ? 'below' : 'healthy';
+                const lastMonthCatTx = lastMonthTransactions
+                  .filter(t => !t.isIncome && (
+                    EXPENSE_SUBTYPES.find(s => s.name === expense.name)?.keys.length === 0
+                      ? !categorisedSubtypes.has(t.subtype)
+                      : EXPENSE_SUBTYPES.find(s => s.name === expense.name)?.keys.some(k => t.subtype?.toLowerCase().includes(k.toLowerCase()))
+                  ))
+                  .reduce((sum, t) => sum + t.amount, 0);
+                const trendPct = lastMonthCatTx > 0
+                  ? Math.round(((expense.amount - lastMonthCatTx) / lastMonthCatTx) * 100)
+                  : 0;
+                const color = ({ 'Salaries': 'bg-red-500', 'Operations': 'bg-yellow-500', 'Infrastructure': 'bg-blue-500', 'Marketing': 'bg-purple-500', 'Other': 'bg-slate-400' } as Record<string, string>)[expense.name] ?? 'bg-slate-400';
+                return (
                 <div key={idx}>
                   <div className="flex items-center justify-between mb-2">
                     <p className="font-semibold text-slate-900 text-base">{expense.name}</p>
                     <div className="flex items-center gap-3">
-                      <span className="text-sm text-slate-600">{expense.amount}</span>
-                      <span className={`text-sm font-bold ${expense.status === 'above' ? 'text-red-600' : expense.status === 'below' ? 'text-blue-600' : 'text-green-600'}`}>
-                        {expense.status === 'above' ? '↑' : expense.status === 'below' ? '↓' : '✓'} {expense.trend}
+                      <span className="text-sm text-slate-600">₹{expense.amount.toLocaleString('en-IN')}</span>
+                      <span className={`text-sm font-bold ${status === 'above' ? 'text-red-600' : status === 'below' ? 'text-blue-600' : 'text-green-600'}`}>
+                        {trendPct >= 0 ? '↑' : '↓'} {Math.abs(trendPct)}%
                       </span>
                     </div>
                   </div>
                   <div className="flex gap-3 items-center">
                     <div className="flex-1">
                       <div className="w-full bg-slate-100 rounded-lg h-6 overflow-hidden">
-                        <div className={`${expense.color} h-full flex items-center justify-end pr-2`} style={{ width: `${expense.pct}%` }}>
-                          <span className="text-white font-bold text-sm">{expense.pct}%</span>
+                        <div className={`${color} h-full flex items-center justify-end pr-2`} style={{ width: `${expense.value}%` }}>
+                          <span className="text-white font-bold text-sm">{expense.value}%</span>
                         </div>
                       </div>
                     </div>
                     <div className="text-right">
                       <p className="text-xs text-slate-600">Target: {expense.benchmark}</p>
-                      <p className={`text-xs font-semibold ${expense.status === 'above' ? 'text-red-600' : expense.status === 'below' ? 'text-blue-600' : 'text-green-600'}`}>
-                        {expense.status === 'above' ? '⚠ Above' : expense.status === 'below' ? 'Below' : '✓ Healthy'}
+                      <p className={`text-xs font-semibold ${status === 'above' ? 'text-red-600' : status === 'below' ? 'text-blue-600' : 'text-green-600'}`}>
+                        {status === 'above' ? 'Above' : status === 'below' ? 'Below' : 'Healthy'}
                       </p>
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
 
-            {/* Financial Risk Signals */}
+            {/* Financial Risk Signals — derived from real expense category data */}
             <div className="mt-8 pt-8 border-t border-slate-200 space-y-3">
               <p className="font-bold text-slate-900 text-base">Financial Risk Signals</p>
               <div className="space-y-2">
-                <div className="flex items-start gap-2 text-sm">
-                  <span className="text-red-600 font-bold">🔴</span>
-                  <span className="text-slate-700">Salaries are consuming 45% of expenses. Recommended range is 30–35%.</span>
-                </div>
-                <div className="flex items-start gap-2 text-sm">
-                  <span className="text-green-600 font-bold">🟢</span>
-                  <span className="text-slate-700">Operating costs stable this month. Good job keeping expenses in check.</span>
-                </div>
-                <div className="flex items-start gap-2 text-sm">
-                  <span className="text-amber-600 font-bold">🟡</span>
-                  <span className="text-slate-700">Marketing spend below target. Consider increasing to capture growth.</span>
-                </div>
+                {expenseCategoryData.filter(c => c.value > 0).map((cat, idx) => {
+                  const benchmarkMax = parseFloat(cat.benchmark.replace(/[^0-9.]/g, '').split('-')[1] ?? cat.benchmark.replace(/[^0-9.]/g, ''));
+                  const benchmarkMin = parseFloat(cat.benchmark.replace(/[^0-9.]/g, '').split('-')[0]);
+                  const isAbove = cat.value > benchmarkMax;
+                  const isBelow = cat.value < (benchmarkMin || 0);
+                  const dot = isAbove ? '🔴' : isBelow ? '🟡' : '🟢';
+                  const msg = isAbove
+                    ? `${cat.name} is consuming ${cat.value}% of expenses. Recommended range is ${cat.benchmark}.`
+                    : isBelow
+                    ? `${cat.name} spend (${cat.value}%) is below target ${cat.benchmark}. Consider increasing.`
+                    : `${cat.name} costs are within healthy range at ${cat.value}%.`;
+                  return (
+                    <div key={idx} className="flex items-start gap-2 text-sm">
+                      <span className="font-bold">{dot}</span>
+                      <span className="text-slate-700">{msg}</span>
+                    </div>
+                  );
+                })}
+                {expenseCategoryData.every(c => c.value === 0) && (
+                  <p className="text-sm text-slate-500">No expense data for the current period.</p>
+                )}
               </div>
             </div>
           </Card>
@@ -953,37 +1170,31 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
           {/* Stacked horizontal bar - larger height */}
           <div className="mb-7">
             <div className="flex rounded-full overflow-hidden h-12 w-full gap-1">
-              <div className="bg-green-500 flex items-center justify-center text-white text-sm font-bold" style={{ width: '54%' }}>
-                Operating
-              </div>
-              <div className="bg-blue-500 flex items-center justify-center text-white text-sm font-bold" style={{ width: '16%' }}>
-                GST
-              </div>
-              <div className="bg-amber-400 flex items-center justify-center text-white text-sm font-bold" style={{ width: '17%' }}>
-                Salary
-              </div>
-              <div className="bg-purple-400 flex items-center justify-center text-white text-sm font-bold" style={{ width: '13%' }}>
-                Profit
-              </div>
+              {allocationBuckets.length > 0 ? allocationBuckets.map(bucket => (
+                <div key={bucket.name} className={`${bucket.color} flex items-center justify-center text-white text-sm font-bold`} style={{ width: `${bucket.pct}%` }}>
+                  {bucket.pct >= 10 ? bucket.name.split(' ')[0] : ''}
+                </div>
+              )) : (
+                <div className="bg-slate-200 flex items-center justify-center text-slate-500 text-sm w-full">
+                  No allocation data
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="grid grid-cols-4 gap-5">
-            {[
-              { name: 'Operating Account', amount: '₹6,20,000', pct: 54, color: 'bg-green-500' },
-              { name: 'GST Reserve', amount: '₹1,80,000', pct: 16, color: 'bg-blue-500' },
-              { name: 'Salary Reserve', amount: '₹2,00,000', pct: 17, color: 'bg-amber-400' },
-              { name: 'Profit Reserve', amount: '₹1,46,591', pct: 13, color: 'bg-purple-400' },
-            ].map(bucket => (
+          <div className={`grid gap-5 ${allocationBuckets.length > 0 ? `grid-cols-${Math.min(allocationBuckets.length, 4)}` : 'grid-cols-1'}`}>
+            {allocationBuckets.length > 0 ? allocationBuckets.slice(0, 4).map(bucket => (
               <div key={bucket.name}>
                 <p className="text-sm font-semibold text-slate-600 mb-2">{bucket.name}</p>
-                <p className="text-2xl font-bold text-slate-900 mb-2">{bucket.amount}</p>
+                <p className="text-2xl font-bold text-slate-900 mb-2">₹{bucket.amount.toLocaleString('en-IN')}</p>
                 <div className="flex items-center gap-2 mt-3">
                   <div className={`w-3 h-3 rounded-full ${bucket.color}`} />
                   <p className="text-sm text-slate-500 font-semibold">{bucket.pct}% allocation</p>
                 </div>
               </div>
-            ))}
+            )) : (
+              <p className="text-sm text-slate-400">Configure bucket mappings to see allocation breakdown.</p>
+            )}
           </div>
         </Card>
 
@@ -1041,7 +1252,11 @@ export function SnapshotScreen({ onNavigate }: SnapshotScreenProps) {
                 <Zap className="w-5 h-5 text-yellow-600" />
               </div>
               <p className="text-base font-bold text-slate-900 mb-1">Budget Alert</p>
-              <p className="text-sm text-slate-600 mb-5">Marketing budget 85% used</p>
+              <p className="text-sm text-slate-600 mb-5">
+                {marketingBudgetPct > 0
+                  ? `Marketing is ${marketingBudgetPct}% of total expenses this month`
+                  : 'No marketing spend recorded this month'}
+              </p>
               <Button size="sm" variant="outline" className="text-yellow-600 border-yellow-300 hover:bg-yellow-100 text-xs w-full">
                 Review
               </Button>
